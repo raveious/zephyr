@@ -1,0 +1,14 @@
+# Copyright (c) 2023, Ian Wakely
+# SPDX-License-Identifier: Apache-2.0
+
+description: SSD1351 128x128 Dot-Matrix OLED/PLED Segment/Common Driver with Controller on SPI bus
+
+compatible: "solomon,ssd1351-spi"
+
+include: ["spi-device.yaml", "display-controller.yaml"]
+
+properties:
+  data_cmd-gpios:
+    type: phandle-array
+    required: false
+    description: D/C# pin.
