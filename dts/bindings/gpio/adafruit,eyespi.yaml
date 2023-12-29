@@ -1,0 +1,32 @@
+# Copyright (c) 2023 Ian Wakely
+# SPDX-License-Identifier: Apache-2.0
+
+description: |
+    GPIO pins exposed on Adafruit EYESPI Connector.
+
+    This binding provides a nexus mapping for 16 of the 18 pins in the EYESPI
+    connector. Starting with Vin on physical pin 1, the corresponding GPIO
+    pins are as depicted below:
+
+        - Vin
+        0 LITE
+        - GND
+        1 SCK
+        2 MOSI
+        3 MISO
+        4 TFT DC
+        5 TFT_RST
+        6 TFT_CS
+        7 CARD_CS
+        8 MEM_CS
+        9 TS_CS
+       10 SCL
+       11 SDA
+       12 INT
+       13 BUSY
+       14 GPIO1
+       15 GPIO2
+
+compatible: "adafruit,eyespi"
+
+include: [gpio-nexus.yaml, base.yaml]
