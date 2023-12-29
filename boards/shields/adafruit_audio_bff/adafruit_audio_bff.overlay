@@ -1,0 +1,21 @@
+/*
+ * Copyright (c) 2024 Ian Wakely
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+&xiao_spi {
+	status = "okay";
+	cs-gpios = <&xiao_d 0 GPIO_ACTIVE_LOW>;	/* D0 */
+
+	adafruit_audio_bff_sdhc: sdhc@0 {
+		compatible = "zephyr,sdhc-spi-slot";
+		reg = <0>;
+		status = "okay";
+		spi-max-frequency = <24000000>;
+		mmc {
+			compatible = "zephyr,sdmmc-disk";
+			status = "okay";
+		};
+	};
+}
