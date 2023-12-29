@@ -1,0 +1,32 @@
+/*
+ * Copyright (c) 2023 Ian Wakely
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/ {
+	/*
+	 * This BFF board doesn't route all of the pins for the EYESPI connector, only
+     * the ones used on the most common displays.
+	 */
+	adafruit_eyespi_connector: connector {
+		compatible = "adafruit,eyespi";
+		#gpio-cells = <2>;
+		gpio-map-mask = <0xffffffff 0xffffffc0>;
+		gpio-map-pass-thru = <0 0x3f>;
+		gpio-map = <0 0 &xiao_d 29 0>,	/* D0 */
+			<1 0 &xiao_d 28 0>,			/* D1 */
+			<2 0 &xiao_d 27 0>,			/* D2 */
+			<3 0 &xiao_d 26 0>,			/* D3 */
+			<4 0 &xiao_d 24 0>,			/* D4 */
+			<5 0 &xiao_d 25 0>,			/* D5 */
+			<6 0 &xiao_d 20 0>,			/* D6 */
+			<7 0 &xiao_d 5 0>,			/* D7 */
+			<8 0 &xiao_d 6 0>,			/* D8 */
+			<9 0 &xiao_d 4 0>,			/* D9 */
+			<10 0 &xiao_d 3 0>;			/* D10 */
+	};
+};
+
+&adafruit_eyespi_spi: xiao_spi {};
+&adafruit_eyespi_i2c: xiao_i2c {};
