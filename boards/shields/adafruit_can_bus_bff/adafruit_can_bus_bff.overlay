@@ -1,0 +1,34 @@
+/*
+ * Copyright (c) 2024 Ian Wakely
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+&xiao_spi {
+	status = "okay";
+	cs-gpios = <&xiao_d 3 GPIO_ACTIVE_LOW>;
+
+	/*
+	 * The MCP25625 is compatible with the MCP2515 driver.
+	 */
+	mcp25625_adafruit_can_bff: can@0 {
+		compatible = "microchip,mcp2515";
+		spi-max-frequency = <1000000>;
+		int-gpios = <&xiao_d 0 GPIO_ACTIVE_LOW>;
+		status = "okay";
+		reg = <0x0>;
+		osc-freq = <16000000>;
+		bus-speed = <125000>;
+		sample-point = <875>;
+
+		can-transceiver {
+			max-bitrate = <1000000>;
+		};
+	};
+};
+
+/ {
+	chosen {
+		zephyr,canbus = &mcp25625_adafruit_can_bff;
+	};
+};
