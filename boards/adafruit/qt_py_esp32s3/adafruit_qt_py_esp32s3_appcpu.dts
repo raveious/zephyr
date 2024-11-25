@@ -1,0 +1,12 @@
+/*
+ * Copyright (c) 2024 Ian Wakely
+ */
+
+/dts-v1/;
+
+#include <espressif/esp32s3/esp32s3_wroom_n8.dtsi>
+#include "adafruit_qt_py_esp32s3_appcpu_common.dtsi"
+
+/ {
+	model = "Adafruit QT Py ESP32S3 APPCPU";
+};
