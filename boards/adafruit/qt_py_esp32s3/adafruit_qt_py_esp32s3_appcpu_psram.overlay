@@ -5,7 +5,7 @@
 /delete-node/ &flash0;
 
 #include <espressif/esp32s3/esp32s3_wroom_n4r2.dtsi>
-#include "adafruit_qt_py_esp32s3_appcpu_common.dtsi"
+#include <espressif/partitions_0x0_amp.dtsi>
 
 / {
 	model = "Adafruit QT Py ESP32S3 PSRAM APPCPU";
