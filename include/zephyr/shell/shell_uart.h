@@ -4,8 +4,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#ifndef SHELL_UART_H__
-#define SHELL_UART_H__
+#ifndef ZEPHYR_INCLUDE_SHELL_UART_H_
+#define ZEPHYR_INCLUDE_SHELL_UART_H_
 
 #include <zephyr/drivers/serial/uart_async_rx.h>
 #include <zephyr/mgmt/mcumgr/transport/smp_shell.h>
@@ -81,7 +81,13 @@ struct shell_uart_polling {
 #define SHELL_UART_STRUCT struct shell_uart_int_driven
 #endif
 
-#define SHELL_UART_DEFINE(_name)                                                                   \
+/**
+ * @brief Macro for creating shell UART transport instance named @p _name
+ *
+ * @note Additional arguments are accepted (but ignored) for compatibility with
+ * previous Zephyr version, it will be removed in future release.
+ */
+#define SHELL_UART_DEFINE(_name, ...)                                                              \
 	static SHELL_UART_STRUCT _name##_shell_uart;                                               \
 	struct shell_transport _name = {                                                           \
 		.api = &shell_uart_transport_api,                                                  \
@@ -109,4 +115,4 @@ struct smp_shell_data *shell_uart_smp_shell_data_get_ptr(void);
 }
 #endif
 
-#endif /* SHELL_UART_H__ */
+#endif /* ZEPHYR_INCLUDE_SHELL_UART_H_ */

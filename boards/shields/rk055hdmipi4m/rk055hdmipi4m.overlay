@@ -9,6 +9,7 @@
 /{
 	chosen {
 		zephyr,display = &lcdif;
+		zephyr,touch = &gt911_rk055hdmipi4m;
 	};
 
 	en_mipi_display: enable-mipi-display {
@@ -49,7 +50,7 @@
 		hsync-active = <0>;
 		vsync-active = <0>;
 		de-active = <1>;
-		pixelclk-active = <1>;
+		pixelclk-active = <0>;
 		/*
 		 * Pixel clock is given by the following formula:
 		 * (height + vsync-len + vfront-porch + vback-porch) *

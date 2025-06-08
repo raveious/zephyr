@@ -70,14 +70,13 @@
 #include <zephyr/drivers/gpio.h>
 #include <string.h>
 
-
-#if defined(CONFIG_SOC_PART_NUMBER_SAM3X8E)
+#if defined(CONFIG_SOC_SAM3X8E)
 #define GPIO_NODE DT_NODELABEL(pioc)
 #else
 #error "Unsupported GPIO driver"
 #endif
 
-#if defined(CONFIG_SOC_PART_NUMBER_SAM3X8E)
+#if defined(CONFIG_SOC_SAM3X8E)
 /* Define GPIO OUT to LCD */
 #define GPIO_PIN_PC12_D0		12	/* PC12 - pin 51 */
 #define GPIO_PIN_PC13_D1		13	/* PC13 - pin 50 */
@@ -149,7 +148,7 @@
 #define GPIO_PIN_CFG(dev, pin, dir)						\
 	do {									\
 		if (gpio_pin_configure((dev), (pin), (dir))) {			\
-			printk("Err cfg " GPIO_NAME "%d! %x\n", (pin), (dir));	\
+			printk("Err cfg " GPIO_NAME "%d! %lx\n", (pin), (dir));	\
 		}								\
 	} while (0)
 

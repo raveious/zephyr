@@ -13,7 +13,7 @@
  *
  * @details Exactly CONFIG_MAX_PTHREAD_COND_COUNT can be in use at once.
  */
-ZTEST(posix_apis, test_cond_resource_exhausted)
+ZTEST(cond, test_cond_resource_exhausted)
 {
 	size_t i;
 	pthread_cond_t m[CONFIG_MAX_PTHREAD_COND_COUNT + 1];
@@ -37,12 +37,39 @@ ZTEST(posix_apis, test_cond_resource_exhausted)
  *
  * @details Demonstrate that condition variables may be used over and over again.
  */
-ZTEST(posix_apis, test_cond_resource_leak)
+ZTEST(cond, test_cond_resource_leak)
 {
-	pthread_cond_t m;
+	pthread_cond_t cond;
 
 	for (size_t i = 0; i < 2 * CONFIG_MAX_PTHREAD_COND_COUNT; ++i) {
-		zassert_ok(pthread_cond_init(&m, NULL), "failed to init cond %zu", i);
-		zassert_ok(pthread_cond_destroy(&m), "failed to destroy cond %zu", i);
+		zassert_ok(pthread_cond_init(&cond, NULL), "failed to init cond %zu", i);
+		zassert_ok(pthread_cond_destroy(&cond), "failed to destroy cond %zu", i);
 	}
 }
+
+ZTEST(cond, test_pthread_condattr)
+{
+	pthread_condattr_t att = {0};
+
+	zassert_ok(pthread_condattr_init(&att));
+
+	zassert_ok(pthread_condattr_destroy(&att));
+}
+
+/**
+ * @brief Test pthread_cond_init() with a pre-existing initialized attribute.
+ */
+ZTEST(cond, test_cond_init_existing_initialized_condattr)
+{
+	pthread_cond_t cond;
+	pthread_condattr_t att = {0};
+
+	zassert_ok(pthread_condattr_init(&att));
+	zassert_ok(pthread_cond_init(&cond, &att), "pthread_cond_init failed with valid attr");
+
+	/* Clean up */
+	zassert_ok(pthread_cond_destroy(&cond));
+	zassert_ok(pthread_condattr_destroy(&att));
+}
+
+ZTEST_SUITE(cond, NULL, NULL, NULL, NULL, NULL);

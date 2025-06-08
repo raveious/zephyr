@@ -6,7 +6,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#define DT_DRV_COMPAT nxp_imx_lpi2c
+#define DT_DRV_COMPAT nxp_lpi2c
 
 #include <errno.h>
 #include <zephyr/drivers/i2c.h>
@@ -14,6 +14,9 @@
 #include <zephyr/kernel.h>
 #include <zephyr/irq.h>
 #include <fsl_lpi2c.h>
+#if CONFIG_NXP_LP_FLEXCOMM
+#include <zephyr/drivers/mfd/nxp_lp_flexcomm.h>
+#endif
 
 #include <zephyr/drivers/pinctrl.h>
 
@@ -310,7 +313,6 @@ restore:
 #ifdef CONFIG_I2C_TARGET
 static void mcux_lpi2c_slave_irq_handler(const struct device *dev)
 {
-	const struct mcux_lpi2c_config *config = dev->config;
 	struct mcux_lpi2c_data *data = dev->data;
 	LPI2C_Type *base = (LPI2C_Type *)DEVICE_MMIO_NAMED_GET(dev, reg_base);
 	const struct i2c_target_callbacks *target_cb = data->target_cfg->callbacks;
@@ -338,7 +340,7 @@ static void mcux_lpi2c_slave_irq_handler(const struct device *dev)
 
 	if (flags & kLPI2C_SlaveRxReadyFlag) {
 		/* RX data is available, read it and issue callback */
-		i2c_data = (uint8_t)config->base->SRDR;
+		i2c_data = (uint8_t)base->SRDR;
 		if (data->first_tx) {
 			data->first_tx = false;
 			if (target_cb->write_requested) {
@@ -372,7 +374,7 @@ static void mcux_lpi2c_slave_irq_handler(const struct device *dev)
 					data->read_active = false;
 				} else {
 					/* Send I2C data */
-					config->base->STDR = i2c_data;
+					base->STDR = i2c_data;
 				}
 			}
 		} else if (data->read_active) {
@@ -384,7 +386,7 @@ static void mcux_lpi2c_slave_irq_handler(const struct device *dev)
 					data->read_active = false;
 				} else {
 					/* Send I2C data */
-					config->base->STDR = i2c_data;
+					base->STDR = i2c_data;
 				}
 			}
 		}
@@ -454,7 +456,6 @@ static int mcux_lpi2c_target_register(const struct device *dev,
 static int mcux_lpi2c_target_unregister(const struct device *dev,
 					struct i2c_target_config *target_config)
 {
-	const struct mcux_lpi2c_config *config = dev->config;
 	struct mcux_lpi2c_data *data = dev->data;
 	LPI2C_Type *base = (LPI2C_Type *)DEVICE_MMIO_NAMED_GET(dev, reg_base);
 
@@ -481,8 +482,11 @@ static void mcux_lpi2c_isr(const struct device *dev)
 		mcux_lpi2c_slave_irq_handler(dev);
 	}
 #endif /* CONFIG_I2C_TARGET */
-
+#if CONFIG_HAS_MCUX_FLEXCOMM
+	LPI2C_MasterTransferHandleIRQ(LPI2C_GetInstance(base), &data->handle);
+#else
 	LPI2C_MasterTransferHandleIRQ(base, &data->handle);
+#endif
 }
 
 static int mcux_lpi2c_init(const struct device *dev)
@@ -535,7 +539,7 @@ static int mcux_lpi2c_init(const struct device *dev)
 	return 0;
 }
 
-static const struct i2c_driver_api mcux_lpi2c_driver_api = {
+static DEVICE_API(i2c, mcux_lpi2c_driver_api) = {
 	.configure = mcux_lpi2c_configure,
 	.transfer = mcux_lpi2c_transfer,
 #if CONFIG_I2C_MCUX_LPI2C_BUS_RECOVERY
@@ -555,13 +559,44 @@ static const struct i2c_driver_api mcux_lpi2c_driver_api = {
 #define I2C_MCUX_LPI2C_SDA_INIT(n)
 #endif /* CONFIG_I2C_MCUX_LPI2C_BUS_RECOVERY */
 
+#define I2C_MCUX_LPI2C_MODULE_IRQ_CONNECT(n)				\
+	do {								\
+		IRQ_CONNECT(DT_INST_IRQN(n),				\
+			DT_INST_IRQ(n, priority),			\
+			mcux_lpi2c_isr,					\
+			DEVICE_DT_INST_GET(n), 0);			\
+		irq_enable(DT_INST_IRQN(n));				\
+	} while (false)
+
+#define I2C_MCUX_LPI2C_MODULE_IRQ(n)					\
+	IF_ENABLED(DT_INST_IRQ_HAS_IDX(n, 0),				\
+		(I2C_MCUX_LPI2C_MODULE_IRQ_CONNECT(n)))
+
+/* When using LP Flexcomm driver, register the interrupt handler
+ * so we receive notification from the LP Flexcomm interrupt handler.
+ */
+#define I2C_MCUX_LPI2C_LPFLEXCOMM_IRQ_FUNC(n)				\
+	nxp_lp_flexcomm_setirqhandler(DEVICE_DT_GET(DT_INST_PARENT(n)), \
+					DEVICE_DT_INST_GET(n),		\
+					LP_FLEXCOMM_PERIPH_LPI2C,	\
+					mcux_lpi2c_isr)
+
+#define I2C_MCUX_LPI2C_IRQ_SETUP_FUNC(n)				\
+	COND_CODE_1(DT_NODE_HAS_COMPAT(DT_INST_PARENT(n),		\
+					nxp_lp_flexcomm),		\
+		    (I2C_MCUX_LPI2C_LPFLEXCOMM_IRQ_FUNC(n)),		\
+		    (I2C_MCUX_LPI2C_MODULE_IRQ(n)))			\
+
 #define I2C_MCUX_LPI2C_INIT(n)						\
 	PINCTRL_DT_INST_DEFINE(n);					\
 									\
-	static void mcux_lpi2c_config_func_##n(const struct device *dev); \
+	static void mcux_lpi2c_config_func_##n(const struct device *dev)\
+	{								\
+		I2C_MCUX_LPI2C_IRQ_SETUP_FUNC(n);			\
+	}								\
 									\
 	static const struct mcux_lpi2c_config mcux_lpi2c_config_##n = {	\
-		DEVICE_MMIO_NAMED_ROM_INIT(reg_base, DT_DRV_INST(n)), \
+		DEVICE_MMIO_NAMED_ROM_INIT(reg_base, DT_DRV_INST(n)),	\
 		.clock_dev = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(n)),	\
 		.clock_subsys =						\
 			(clock_control_subsys_t)DT_INST_CLOCKS_CELL(n, name),\
@@ -580,17 +615,7 @@ static const struct i2c_driver_api mcux_lpi2c_driver_api = {
 	I2C_DEVICE_DT_INST_DEFINE(n, mcux_lpi2c_init, NULL,		\
 				&mcux_lpi2c_data_##n,			\
 				&mcux_lpi2c_config_##n, POST_KERNEL,	\
-				CONFIG_I2C_INIT_PRIORITY,			\
-				&mcux_lpi2c_driver_api);			\
-									\
-	static void mcux_lpi2c_config_func_##n(const struct device *dev) \
-	{								\
-		IRQ_CONNECT(DT_INST_IRQN(n),				\
-				DT_INST_IRQ(n, priority),			\
-				mcux_lpi2c_isr,				\
-				DEVICE_DT_INST_GET(n), 0);			\
-									\
-		irq_enable(DT_INST_IRQN(n));				\
-	}
+				CONFIG_I2C_INIT_PRIORITY,		\
+				&mcux_lpi2c_driver_api);
 
 DT_INST_FOREACH_STATUS_OKAY(I2C_MCUX_LPI2C_INIT)

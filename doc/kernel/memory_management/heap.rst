@@ -127,6 +127,13 @@ application-provided callback is responsible for doing the underlying
 allocation from one of the managed heaps, and may use the
 configuration parameter in any way it likes to make that decision.
 
+For modifying the size of an allocated buffer (whether shrinking
+or enlarging it), you can use the
+:c:func:`sys_multi_heap_realloc` and
+:c:func:`sys_multi_heap_aligned_realloc` APIs.  If the buffer cannot be
+enlarged on the heap where it currently resides,
+any of the eligible heaps specified by the configuration parameter may be used.
+
 When unused, a multi heap may be freed via
 :c:func:`sys_multi_heap_free`.  The application does not need to pass
 a configuration parameter.  Memory allocated from any of the managed
@@ -175,7 +182,7 @@ will be ignored and the minimum value will be used instead.
 To force a smaller than minimum value to be used, the application may enable the
 :kconfig:option:`CONFIG_HEAP_MEM_POOL_IGNORE_MIN` option. This can be useful
 when optimizing the heap size and the minimum requirement can be more accurately
-determined for a speficic application.
+determined for a specific application.
 
 Allocating Memory
 =================
@@ -230,6 +237,10 @@ API Reference
 =============
 
 .. doxygengroup:: heap_apis
+
+.. doxygengroup:: low_level_heap_allocator
+
+.. doxygengroup:: multi_heap_wrapper
 
 Heap listener
 *************

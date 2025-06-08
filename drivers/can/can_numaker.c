@@ -18,12 +18,6 @@
 
 LOG_MODULE_REGISTER(can_numaker, CONFIG_CAN_LOG_LEVEL);
 
-/* CANFD Clock Source Selection */
-#define NUMAKER_CANFD_CLKSEL_HXT      0
-#define NUMAKER_CANFD_CLKSEL_PLL_DIV2 1
-#define NUMAKER_CANFD_CLKSEL_HCLK     2
-#define NUMAKER_CANFD_CLKSEL_HIRC     3
-
 /* Implementation notes
  * 1. Use Bosch M_CAN driver (m_can) as backend
  * 2. Need to modify can_numaker_get_core_clock() for new SOC support
@@ -55,18 +49,49 @@ static int can_numaker_get_core_clock(const struct device *dev, uint32_t *rate)
 	clkdiv_divider = CLK_GetModuleClockDivider(config->clk_modidx) + 1;
 
 	switch (clksrc_rate_idx) {
-	case NUMAKER_CANFD_CLKSEL_HXT:
+#if defined(CONFIG_SOC_SERIES_M46X)
+	case (CLK_CLKSEL0_CANFD0SEL_HXT >> CLK_CLKSEL0_CANFD0SEL_Pos):
 		*rate = __HXT / clkdiv_divider;
 		break;
-	case NUMAKER_CANFD_CLKSEL_PLL_DIV2:
+	case (CLK_CLKSEL0_CANFD0SEL_PLL_DIV2 >> CLK_CLKSEL0_CANFD0SEL_Pos):
 		*rate = (CLK_GetPLLClockFreq() / 2) / clkdiv_divider;
 		break;
-	case NUMAKER_CANFD_CLKSEL_HCLK:
+	case (CLK_CLKSEL0_CANFD0SEL_HCLK >> CLK_CLKSEL0_CANFD0SEL_Pos):
 		*rate = CLK_GetHCLKFreq() / clkdiv_divider;
 		break;
-	case NUMAKER_CANFD_CLKSEL_HIRC:
+	case (CLK_CLKSEL0_CANFD0SEL_HIRC >> CLK_CLKSEL0_CANFD0SEL_Pos):
 		*rate = __HIRC / clkdiv_divider;
 		break;
+#elif defined(CONFIG_SOC_SERIES_M2L31X)
+	case (CLK_CLKSEL0_CANFD0SEL_HXT >> CLK_CLKSEL0_CANFD0SEL_Pos):
+		*rate = __HXT / clkdiv_divider;
+		break;
+	case (CLK_CLKSEL0_CANFD0SEL_HIRC48M >> CLK_CLKSEL0_CANFD0SEL_Pos):
+		*rate = __HIRC48 / clkdiv_divider;
+		break;
+	case (CLK_CLKSEL0_CANFD0SEL_HCLK >> CLK_CLKSEL0_CANFD0SEL_Pos):
+		*rate = CLK_GetHCLKFreq() / clkdiv_divider;
+		break;
+	case (CLK_CLKSEL0_CANFD0SEL_HIRC >> CLK_CLKSEL0_CANFD0SEL_Pos):
+		*rate = __HIRC / clkdiv_divider;
+		break;
+#elif defined(CONFIG_SOC_SERIES_M55M1X)
+	case (CLK_CANFDSEL_CANFD0SEL_HXT >> CLK_CANFDSEL_CANFD0SEL_Pos):
+		*rate = __HXT / clkdiv_divider;
+		break;
+	case (CLK_CANFDSEL_CANFD0SEL_APLL0_DIV2 >> CLK_CANFDSEL_CANFD0SEL_Pos):
+		*rate = (CLK_GetAPLL0ClockFreq() / 2) / clkdiv_divider;
+		break;
+	case (CLK_CANFDSEL_CANFD0SEL_HCLK0 >> CLK_CANFDSEL_CANFD0SEL_Pos):
+		*rate = CLK_GetHCLK0Freq() / clkdiv_divider;
+		break;
+	case (CLK_CANFDSEL_CANFD0SEL_HIRC >> CLK_CANFDSEL_CANFD0SEL_Pos):
+		*rate = __HIRC / clkdiv_divider;
+		break;
+	case (CLK_CANFDSEL_CANFD0SEL_HIRC48M_DIV4 >> CLK_CANFDSEL_CANFD0SEL_Pos):
+		*rate = (__HIRC48M / 4) / clkdiv_divider;
+		break;
+#endif
 	default:
 		LOG_ERR("Invalid clock source rate index");
 		return -EIO;
@@ -160,7 +185,7 @@ static int can_numaker_init(const struct device *dev)
 	return rc;
 }
 
-static const struct can_driver_api can_numaker_driver_api = {
+static DEVICE_API(can, can_numaker_driver_api) = {
 	.get_capabilities = can_mcan_get_capabilities,
 	.start = can_mcan_start,
 	.stop = can_mcan_stop,
@@ -169,14 +194,13 @@ static const struct can_driver_api can_numaker_driver_api = {
 	.send = can_mcan_send,
 	.add_rx_filter = can_mcan_add_rx_filter,
 	.remove_rx_filter = can_mcan_remove_rx_filter,
-#ifndef CONFIG_CAN_AUTO_BUS_OFF_RECOVERY
+#ifdef CONFIG_CAN_MANUAL_RECOVERY_MODE
 	.recover = can_mcan_recover,
-#endif /* CONFIG_CAN_AUTO_BUS_OFF_RECOVERY */
+#endif /* CONFIG_CAN_MANUAL_RECOVERY_MODE */
 	.get_state = can_mcan_get_state,
 	.set_state_change_callback = can_mcan_set_state_change_callback,
 	.get_core_clock = can_numaker_get_core_clock,
 	.get_max_filters = can_mcan_get_max_filters,
-	.get_max_bitrate = can_mcan_get_max_bitrate,
 	.timing_min = CAN_MCAN_TIMING_MIN_INITIALIZER,
 	.timing_max = CAN_MCAN_TIMING_MAX_INITIALIZER,
 #ifdef CONFIG_CAN_FD_MODE
@@ -249,18 +273,18 @@ static const struct can_mcan_ops can_numaker_ops = {
 									          \
 	static void can_numaker_irq_config_func_##inst(const struct device *dev)  \
 	{                                                                         \
-		IRQ_CONNECT(DT_INST_IRQ_BY_IDX(inst, 0, irq),                     \
-				DT_INST_IRQ_BY_IDX(inst, 0, priority),            \
+		IRQ_CONNECT(DT_INST_IRQ_BY_NAME(inst, int0, irq),                 \
+				DT_INST_IRQ_BY_NAME(inst, int0, priority),        \
 				can_mcan_line_0_isr,                              \
 				DEVICE_DT_INST_GET(inst),                         \
 				0);                                               \
-		irq_enable(DT_INST_IRQ_BY_IDX(inst, 0, irq));                     \
-		IRQ_CONNECT(DT_INST_IRQ_BY_IDX(inst, 1, irq),                     \
-				DT_INST_IRQ_BY_IDX(inst, 1, priority),            \
+		irq_enable(DT_INST_IRQ_BY_NAME(inst, int0, irq));                 \
+		IRQ_CONNECT(DT_INST_IRQ_BY_NAME(inst, int1, irq),                 \
+				DT_INST_IRQ_BY_NAME(inst, int1, priority),        \
 				can_mcan_line_1_isr,                              \
 				DEVICE_DT_INST_GET(inst),                         \
 				0);                                               \
-		irq_enable(DT_INST_IRQ_BY_IDX(inst, 1, irq));                     \
+		irq_enable(DT_INST_IRQ_BY_NAME(inst, int1, irq));                 \
 	}                                                                         \
 										  \
 	static const struct can_numaker_config can_numaker_config_##inst = {      \
@@ -288,7 +312,7 @@ static const struct can_mcan_ops can_numaker_ops = {
 		CAN_MCAN_DATA_INITIALIZER(&can_numaker_data_ ## inst);            \
                                                                                   \
 	CAN_DEVICE_DT_INST_DEFINE(inst,                                           \
-		&can_numaker_init,                                                \
+		can_numaker_init,                                                 \
 		NULL,                                                             \
 		&can_mcan_data_##inst,                                            \
 		&can_mcan_config_##inst,                                          \

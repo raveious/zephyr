@@ -103,7 +103,7 @@ static inline void reschedule(struct net_trickle *trickle)
 	k_work_reschedule(&trickle->timer, K_MSEC(diff));
 }
 
-static void inteval_timeout(struct net_trickle *trickle)
+static void interval_timeout(struct net_trickle *trickle)
 {
 	NET_DBG("Trickle timeout at %d", k_uptime_get_32());
 
@@ -130,7 +130,7 @@ static void trickle_timeout(struct k_work *work)
 	if (trickle->double_to) {
 		double_interval_timeout(trickle);
 	} else {
-		inteval_timeout(trickle);
+		interval_timeout(trickle);
 	}
 }
 
@@ -161,7 +161,9 @@ int net_trickle_create(struct net_trickle *trickle,
 		       uint8_t Imax,
 		       uint8_t k)
 {
-	NET_ASSERT(trickle && Imax > 0 && k > 0 && !CHECK_IMIN(Imin));
+	if (!(trickle && Imax > 0 && k > 0 && !CHECK_IMIN(Imin))) {
+		return -EINVAL;
+	}
 
 	(void)memset(trickle, 0, sizeof(struct net_trickle));
 
@@ -170,9 +172,11 @@ int net_trickle_create(struct net_trickle *trickle,
 	trickle->Imax_abs = Imin << Imax;
 	trickle->k = k;
 
-	NET_ASSERT(trickle->Imax_abs);
+	if (!trickle->Imax_abs) {
+		return -EINVAL;
+	}
 
-	NET_DBG("Imin %d Imax %u k %u Imax_abs %d",
+	NET_DBG("Imin %d Imax %u k %u Imax_abs %u",
 		trickle->Imin, trickle->Imax, trickle->k,
 		trickle->Imax_abs);
 
@@ -185,7 +189,9 @@ int net_trickle_start(struct net_trickle *trickle,
 		      net_trickle_cb_t cb,
 		      void *user_data)
 {
-	NET_ASSERT(trickle && cb);
+	if (!(trickle && cb)) {
+		return -EINVAL;
+	}
 
 	trickle->cb = cb;
 	trickle->user_data = user_data;
@@ -206,7 +212,9 @@ int net_trickle_start(struct net_trickle *trickle,
 
 int net_trickle_stop(struct net_trickle *trickle)
 {
-	NET_ASSERT(trickle);
+	if (trickle == NULL) {
+		return -EINVAL;
+	}
 
 	k_work_cancel_delayable(&trickle->timer);
 
@@ -217,7 +225,9 @@ int net_trickle_stop(struct net_trickle *trickle)
 
 void net_trickle_consistency(struct net_trickle *trickle)
 {
-	NET_ASSERT(trickle);
+	if (trickle == NULL) {
+		return;
+	}
 
 	if (trickle->c < 0xFF) {
 		trickle->c++;
@@ -228,7 +238,9 @@ void net_trickle_consistency(struct net_trickle *trickle)
 
 void net_trickle_inconsistency(struct net_trickle *trickle)
 {
-	NET_ASSERT(trickle);
+	if (trickle == NULL) {
+		return;
+	}
 
 	if (trickle->I != trickle->Imin) {
 		NET_DBG("inconsistency");

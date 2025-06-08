@@ -25,7 +25,7 @@ LOG_MODULE_REGISTER(net_test, NET_LOG_LEVEL);
 
 #include <zephyr/net/ethernet.h>
 #include <zephyr/net/dummy.h>
-#include <zephyr/net/buf.h>
+#include <zephyr/net_buf.h>
 #include <zephyr/net/net_ip.h>
 #include <zephyr/net/net_if.h>
 
@@ -41,7 +41,7 @@ LOG_MODULE_REGISTER(net_test, NET_LOG_LEVEL);
 /* Interface 1 addresses */
 static struct in6_addr my_addr1 = { { { 0x20, 0x01, 0x0d, 0xb8, 1, 0, 0, 0,
 					0, 0, 0, 0, 0, 0, 0, 0x1 } } };
-static struct in_addr my_ipv4_addr1 = { { { 192, 0, 2, 1 } } };
+static ZTEST_BMEM struct in_addr my_ipv4_addr1 = { { { 192, 0, 2, 1 } } };
 
 /* Interface 2 addresses */
 static struct in6_addr my_addr2 = { { { 0x20, 0x01, 0x0d, 0xb8, 2, 0, 0, 0,
@@ -56,12 +56,14 @@ static struct in6_addr ll_addr = { { { 0xfe, 0x80, 0x43, 0xb8, 0, 0, 0, 0,
 				       0, 0, 0, 0xf2, 0xaa, 0x29, 0x02,
 				       0x04 } } };
 
+static struct in_addr inaddr_mcast = { { { 224, 0, 0, 1 } } };
 static struct in6_addr in6addr_mcast;
 
 static struct net_if *iface1;
 static struct net_if *iface2;
 static struct net_if *iface3;
 static struct net_if *iface4;
+static struct net_if *eth_iface;
 
 static bool test_failed;
 static bool test_started;
@@ -87,10 +89,10 @@ static uint8_t *net_iface_get_mac(const struct device *dev)
 		data->mac_addr[2] = 0x5E;
 		data->mac_addr[3] = 0x00;
 		data->mac_addr[4] = 0x53;
-		data->mac_addr[5] = sys_rand32_get();
+		data->mac_addr[5] = sys_rand8_get();
 	}
 
-	data->ll_addr.addr = data->mac_addr;
+	memcpy(data->ll_addr.addr, data->mac_addr, sizeof(data->mac_addr));
 	data->ll_addr.len = 6U;
 
 	return data->mac_addr;
@@ -296,12 +298,13 @@ static void iface_cb(struct net_if *iface, void *user_data)
 		const struct ethernet_api *api =
 			net_if_get_device(iface)->api;
 
-		/* As native_posix board will introduce another ethernet
+		/* As native_sim board will introduce another ethernet
 		 * interface, make sure that we only use our own in this test.
 		 */
 		if (api->get_capabilities ==
 		    eth_fake_api_funcs.get_capabilities) {
 			iface4 = iface;
+			eth_iface = iface;
 		}
 	} else {
 		switch (if_count) {
@@ -438,6 +441,13 @@ static void *iface_setup(void)
 	}
 
 	ifaddr->addr_state = NET_ADDR_PREFERRED;
+
+	maddr = net_if_ipv4_maddr_add(iface1, &inaddr_mcast);
+	if (!maddr) {
+		DBG("Cannot add multicast IPv4 address %s\n",
+		       net_sprint_ipv4_addr(&inaddr_mcast));
+		zassert_not_null(maddr, "mcast");
+	}
 
 	net_ipv6_addr_create(&in6addr_mcast, 0xff02, 0, 0, 0, 0, 0, 0, 0x0001);
 
@@ -1068,7 +1078,7 @@ static void netmask_addr_add(void *p1, void *p2, void *p3)
 	struct in_addr my_netmask = { { { 255, 255, 255, 0 } } };
 	bool ret;
 
-	ret = net_if_ipv4_set_netmask_by_index(1, &my_netmask);
+	ret = net_if_ipv4_set_netmask_by_addr_by_index(1, &my_ipv4_addr1, &my_netmask);
 	zassert_true(ret, "Cannot add IPv4 netmask");
 }
 
@@ -1174,6 +1184,34 @@ ZTEST(net_iface, test_ipv4_addr_foreach)
 	zassert_equal(count, 0, "Incorrect number of callback calls");
 }
 
+static void foreach_ipv4_maddr_check(struct net_if *iface,
+				     struct net_if_mcast_addr *if_addr,
+				     void *user_data)
+{
+	int *count = (int *)user_data;
+
+	(*count)++;
+
+	zassert_equal_ptr(iface, iface1, "Callback called on wrong interface");
+	zassert_mem_equal(&if_addr->address.in_addr, &inaddr_mcast,
+			  sizeof(struct in_addr), "Wrong IPv4 multicast address");
+}
+
+ZTEST(net_iface, test_ipv4_maddr_foreach)
+{
+	int count = 0;
+
+	/* iface1 has one IPv4 multicast address configured */
+	net_if_ipv4_maddr_foreach(iface1, foreach_ipv4_maddr_check, &count);
+	zassert_equal(count, 1, "Incorrect number of callback calls");
+
+	count = 0;
+
+	/* iface4 has no IPv4 multicast address configured */
+	net_if_ipv4_maddr_foreach(iface4, foreach_ipv4_maddr_check, &count);
+	zassert_equal(count, 0, "Incorrect number of callback calls");
+}
+
 static void foreach_ipv6_addr_check(struct net_if *iface,
 				    struct net_if_addr *if_addr,
 				    void *user_data)
@@ -1208,6 +1246,34 @@ ZTEST(net_iface, test_ipv6_addr_foreach)
 	zassert_equal(count, 0, "Incorrect number of callback calls");
 }
 
+static void foreach_ipv6_maddr_check(struct net_if *iface,
+				     struct net_if_mcast_addr *if_addr,
+				     void *user_data)
+{
+	int *count = (int *)user_data;
+
+	(*count)++;
+
+	zassert_equal_ptr(iface, iface1, "Callback called on wrong interface");
+	zassert_mem_equal(&if_addr->address.in6_addr, &in6addr_mcast, sizeof(struct in6_addr),
+			  "Wrong IPv6 multicast address");
+}
+
+ZTEST(net_iface, test_ipv6_maddr_foreach)
+{
+	int count = 0;
+
+	/* iface1 has one IPv6 multicast address configured */
+	net_if_ipv6_maddr_foreach(iface1, foreach_ipv6_maddr_check, &count);
+	zassert_equal(count, 1, "Incorrect number of callback calls");
+
+	count = 0;
+
+	/* iface4 has no IPv6 multicast address configured */
+	net_if_ipv6_maddr_foreach(iface4, foreach_ipv6_maddr_check, &count);
+	zassert_equal(count, 0, "Incorrect number of callback calls");
+}
+
 ZTEST(net_iface, test_interface_name)
 {
 	int ret;
@@ -1237,6 +1303,16 @@ ZTEST(net_iface, test_interface_name)
 	ret = net_if_set_name(iface, name);
 	zassert_equal(ret, 0, "Unexpected value (%d) returned", ret);
 
+	name = "abc0";
+	ret = net_if_set_name(iface2, name);
+	zassert_equal(ret, -EALREADY, "Unexpected value (%d) returned", ret);
+
+	name = "abc";
+	ret = net_if_set_name(iface2, name);
+	zassert_equal(ret, 0, "Unexpected value (%d) returned", ret);
+
+	name = "abc0";
+
 	ret = net_if_get_name(iface, buf, 1);
 	zassert_equal(ret, -ERANGE, "Unexpected value (%d) returned", ret);
 
@@ -1244,7 +1320,8 @@ ZTEST(net_iface, test_interface_name)
 	zassert_equal(ret, -ERANGE, "Unexpected value (%d) returned", ret);
 
 	ret = net_if_get_name(iface, buf, sizeof(buf) - 1);
-	zassert_equal(ret, strlen(name), "Unexpected value (%d) returned", ret);
+	zassert_equal(ret, strlen(name), "Unexpected value (%d) returned, expected %d",
+		      ret, strlen(name));
 
 	ret = net_if_get_by_name(name);
 	zassert_equal(ret, net_if_get_by_iface(iface), "Unexpected value (%d) returned", ret);
@@ -1254,6 +1331,67 @@ ZTEST(net_iface, test_interface_name)
 #else
 	ret = net_if_get_name(NULL, NULL, -1);
 	zassert_equal(ret, -ENOTSUP, "Invalid value returned");
+#endif
+}
+
+static void generate_iid(struct net_if *iface,
+			 struct in6_addr *expected_addr,
+			 struct in6_addr *iid_addr)
+{
+	const struct in6_addr prefix = { { { 0x20, 0x01, 0x1b, 0x98, 0x24, 0xb8, 0x7e, 0xbb,
+					     0, 0, 0, 0, 0, 0, 0, 0 } } };
+	struct net_linkaddr *lladdr = net_if_get_link_addr(iface);
+	uint8_t *mac;
+	int ret;
+
+	(void)net_iface_get_mac(net_if_get_device(iface));
+
+	lladdr = net_if_get_link_addr(eth_iface);
+	mac = lladdr->addr;
+
+	memcpy(expected_addr, &prefix, sizeof(struct in6_addr));
+	memcpy(&expected_addr->s6_addr[8], &mac[0], 3);
+	expected_addr->s6_addr[11] = 0xff;
+	expected_addr->s6_addr[12] = 0xfe;
+	memcpy(&expected_addr->s6_addr[13], &mac[3], 3);
+
+	expected_addr->s6_addr[8] ^= 0x02; /* Universal bit toggle */
+
+	ret = net_ipv6_addr_generate_iid(iface, &prefix, NULL, 0, 0, iid_addr,
+					 net_if_get_link_addr(eth_iface));
+	zassert_equal(ret, 0, "Unexpected value (%d) returned", ret);
+}
+
+ZTEST(net_iface, test_ipv6_iid_eui64)
+{
+#if defined(CONFIG_NET_IPV6_IID_EUI_64)
+	struct in6_addr iid_addr = { };
+	struct in6_addr expected_addr = { };
+
+	generate_iid(eth_iface, &expected_addr, &iid_addr);
+
+	zassert_mem_equal(&expected_addr, &iid_addr, sizeof(struct in6_addr));
+#else
+	ztest_test_skip();
+#endif
+}
+
+ZTEST(net_iface, test_ipv6_iid_stable)
+{
+#if defined(CONFIG_NET_IPV6_IID_STABLE)
+	struct in6_addr iid_addr = { };
+	struct in6_addr expected_addr = { };
+
+	generate_iid(eth_iface, &expected_addr, &iid_addr);
+
+	/* Make sure that EUI-64 bytes are not there */
+	zassert_not_equal(iid_addr.s6_addr[11], 0xff);
+	zassert_not_equal(iid_addr.s6_addr[12], 0xfe);
+
+	zassert_true(memcmp(&expected_addr, &iid_addr, sizeof(struct in6_addr)) != 0,
+		     "IID is EUI-64 instead of randomized");
+#else
+	ztest_test_skip();
 #endif
 }
 

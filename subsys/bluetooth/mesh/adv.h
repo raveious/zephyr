@@ -4,6 +4,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#include <stdint.h>
+
+#include <zephyr/bluetooth/bluetooth.h>
+#include <zephyr/sys/util_macro.h>
+#include <zephyr/sys_clock.h>
+
 #ifndef ZEPHYR_SUBSYS_BLUETOOTH_MESH_ADV_H_
 #define ZEPHYR_SUBSYS_BLUETOOTH_MESH_ADV_H_
 
@@ -52,7 +58,11 @@ struct bt_mesh_adv_ctx {
 };
 
 struct bt_mesh_adv {
-	sys_snode_t node;
+	void *adv_bearer;
+
+#if defined(CONFIG_BT_MESH_GATT)
+	void *gatt_bearer[CONFIG_BT_MAX_CONN];
+#endif
 
 	struct bt_mesh_adv_ctx ctx;
 
@@ -76,6 +86,7 @@ struct bt_mesh_adv *bt_mesh_adv_create(enum bt_mesh_adv_type type,
 
 void bt_mesh_adv_send(struct bt_mesh_adv *adv, const struct bt_mesh_send_cb *cb,
 		      void *cb_data);
+void bt_mesh_adv_send_end(int err, struct bt_mesh_adv_ctx const *ctx);
 
 struct bt_mesh_adv *bt_mesh_adv_get(k_timeout_t timeout);
 
@@ -93,14 +104,13 @@ int bt_mesh_scan_disable(void);
 
 int bt_mesh_adv_enable(void);
 
-/* Should not be called from work queue due to undefined behavior */
 int bt_mesh_adv_disable(void);
 
 void bt_mesh_adv_local_ready(void);
 
 void bt_mesh_adv_relay_ready(void);
 
-void bt_mesh_adv_terminate(struct bt_mesh_adv *adv);
+int bt_mesh_adv_terminate(struct bt_mesh_adv *adv);
 
 void bt_mesh_adv_friend_ready(void);
 
@@ -116,5 +126,7 @@ int bt_mesh_scan_active_set(bool active);
 
 int bt_mesh_adv_bt_data_send(uint8_t num_events, uint16_t adv_interval,
 			     const struct bt_data *ad, size_t ad_len);
+
+int bt_mesh_wq_submit(struct k_work *work);
 
 #endif /* ZEPHYR_SUBSYS_BLUETOOTH_MESH_ADV_H_ */

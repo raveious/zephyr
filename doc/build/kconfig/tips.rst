@@ -315,6 +315,16 @@ In summary, here are some recommended practices for ``select``:
 - Select simple helper symbols without prompts and dependencies however much
   you like. They're a great tool for simplifying Kconfig files.
 
+- An exemption are buses like I2C and SPI, and following the same thought
+  process things like MFD as well. Drivers on these buses should use
+  ``select`` to allow the automatic activation of the necessary bus drivers
+  when devices on the bus are enabled in the devicetree.
+
+.. code-block:: kconfig
+
+   config ADC_FOO
+      bool "external SPI ADC foo driver"
+      select SPI
 
 (Lack of) conditional includes
 ******************************
@@ -866,31 +876,10 @@ For a Kconfig symbol that enables a driver/subsystem FOO, consider having just
 usually be clear in the context of an option that can be toggled on/off, and
 makes things consistent.
 
+Style
+=====
 
-Header comments and other nits
-==============================
-
-A few formatting nits, to help keep things consistent:
-
-- Use this format for any header comments at the top of ``Kconfig`` files:
-
-  .. code-block:: none
-
-     # <Overview of symbols defined in the file, preferably in plain English>
-     (Blank line)
-     # Copyright (c) 2019 ...
-     # SPDX-License-Identifier: <License>
-     (Blank line)
-     (Kconfig definitions)
-
-- Format comments as ``# Comment`` rather than ``#Comment``
-
-- Put a blank line before/after each top-level ``if`` and ``endif``
-
-- Use a single tab for each indentation
-
-- Indent help text with two extra spaces
-
+See :ref:`coding_style` for style guidelines.
 
 Lesser-known/used Kconfig features
 **********************************
@@ -1050,7 +1039,7 @@ This is logically equivalent to the following:
    See the `optional prompts`_ section for the meaning of the conditions on the
    prompts.
 
-When ``HAS_CONFIGURABLE`` is ``n``, we now get the following configuration
+When ``HAS_CONFIGURABLE_FOO`` is ``n``, we now get the following configuration
 output for the symbols, instead of no output:
 
 .. code-block:: cfg

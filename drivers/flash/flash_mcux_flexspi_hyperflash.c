@@ -395,6 +395,14 @@ static int flash_flexspi_hyperflash_read(const struct device *dev, off_t offset,
 {
 	struct flash_flexspi_hyperflash_data *data = dev->data;
 
+	if (len == 0) {
+		return 0;
+	}
+
+	if (!buffer) {
+		return -EINVAL;
+	}
+
 	uint8_t *src = memc_flexspi_get_ahb_address(&data->controller,
 			data->port,
 			offset);
@@ -431,10 +439,12 @@ static int flash_flexspi_hyperflash_write(const struct device *dev, off_t offset
 		 * code and data accessed must reside in ram.
 		 */
 		key = irq_lock();
+		memc_flexspi_wait_bus_idle(&data->controller);
 	}
 
+	/* Clock FlexSPI at 84 MHZ (42MHz SCLK in DDR mode) */
 	(void)memc_flexspi_update_clock(&data->controller, &data->config,
-					data->port, MEMC_FLEXSPI_CLOCK_42M);
+					data->port, MHZ(84));
 
 	while (len) {
 		/* Writing between two page sizes crashes the platform so we
@@ -446,6 +456,12 @@ static int flash_flexspi_hyperflash_write(const struct device *dev, off_t offset
 #ifdef CONFIG_FLASH_MCUX_FLEXSPI_HYPERFLASH_WRITE_BUFFER
 		for (j = 0; j < i; j++) {
 			hyperflash_write_buf[j] = src[j];
+		}
+		/* As memcpy could cause an XIP access,
+		 * we need to wait for XIP prefetch to be finished again
+		 */
+		if (memc_flexspi_is_running_xip(&data->controller)) {
+			memc_flexspi_wait_bus_idle(&data->controller);
 		}
 #endif
 		ret = flash_flexspi_hyperflash_write_enable(dev, offset);
@@ -477,8 +493,9 @@ static int flash_flexspi_hyperflash_write(const struct device *dev, off_t offset
 		len -= i;
 	}
 
+	/* Clock FlexSPI at 332 MHZ (166 MHz SCLK in DDR mode) */
 	(void)memc_flexspi_update_clock(&data->controller, &data->config,
-					data->port, MEMC_FLEXSPI_CLOCK_166M);
+					data->port, MHZ(332));
 
 #ifdef CONFIG_HAS_MCUX_CACHE
 	DCACHE_InvalidateByRange((uint32_t) dst, size);
@@ -525,6 +542,7 @@ static int flash_flexspi_hyperflash_erase(const struct device *dev, off_t offset
 		 * code and data accessed must reside in ram.
 		 */
 		key = irq_lock();
+		memc_flexspi_wait_bus_idle(&data->controller);
 	}
 
 	for (i = 0; i < num_sectors; i++) {
@@ -631,7 +649,7 @@ static int flash_flexspi_hyperflash_init(const struct device *dev)
 	return 0;
 }
 
-static const struct flash_driver_api flash_flexspi_hyperflash_api = {
+static DEVICE_API(flash, flash_flexspi_hyperflash_api) = {
 	.read = flash_flexspi_hyperflash_read,
 	.write = flash_flexspi_hyperflash_write,
 	.erase = flash_flexspi_hyperflash_erase,

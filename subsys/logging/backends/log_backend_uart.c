@@ -114,8 +114,11 @@ static int char_out(uint8_t *data, size_t length, void *ctx)
 
 	(void)err;
 cleanup:
-	/* As errors cannot be returned, ignore the return value */
-	(void)pm_device_runtime_put(uart_dev);
+	/* Use async put to avoid useless device suspension/resumption
+	 * when tranmiting chain of chars.
+	 * As errors cannot be returned, ignore the return value
+	 */
+	(void)pm_device_runtime_put_async(uart_dev, K_MSEC(1));
 
 	return length;
 }
@@ -186,7 +189,7 @@ static void panic(struct log_backend const *const backend)
 
 	/* Ensure that the UART device is in active mode */
 #if defined(CONFIG_PM_DEVICE_RUNTIME)
-	pm_device_runtime_get(uart_dev);
+	(void)pm_device_runtime_get(uart_dev);
 #elif defined(CONFIG_PM_DEVICE)
 	enum pm_device_state pm_state;
 	int rc;
@@ -222,8 +225,15 @@ const struct log_backend_api log_backend_uart_api = {
 	.format_set = format_set,
 };
 
+#if defined(CONFIG_LOG_BACKEND_UART_ASYNC) && defined(CONFIG_SOC_FAMILY_STM32) &&                  \
+	defined(CONFIG_ARCH_HAS_NOCACHE_MEMORY_SUPPORT)
+#define NOCACHE_ATTR __nocache
+#else
+#define NOCACHE_ATTR
+#endif
+
 #define LBU_DEFINE(node_id, ...)                                                                   \
-	static uint8_t lbu_buffer##__VA_ARGS__[CONFIG_LOG_BACKEND_UART_BUFFER_SIZE];               \
+	static uint8_t lbu_buffer##__VA_ARGS__[CONFIG_LOG_BACKEND_UART_BUFFER_SIZE] NOCACHE_ATTR;  \
 	LOG_OUTPUT_DEFINE(lbu_output##__VA_ARGS__, char_out, lbu_buffer##__VA_ARGS__,              \
 			  CONFIG_LOG_BACKEND_UART_BUFFER_SIZE);                                    \
                                                                                                    \

@@ -47,6 +47,8 @@ Available Emulators
   * Main Kconfig option: :kconfig:option:`CONFIG_EEPROM_EMULATOR`
   * DT binding: :dtcompatible:`zephyr,emu-eeprom`
 
+.. _emul_eeprom_simu_brief:
+
 **EEPROM simulator**
   * Emulate an EEPROM on RAM
   * Main Kconfig option: :kconfig:option:`CONFIG_EEPROM_SIMULATOR`
@@ -57,6 +59,8 @@ Available Emulators
 **External bus and bus connected peripheral emulators**
   * :ref:`Documentation <bus_emul>`
   * Allow emulating external buses like I2C or SPI and peripherals connected to them.
+
+.. _emul_flash_simu_brief:
 
 **Flash simulator**
   * Emulate a flash on RAM
@@ -76,7 +80,7 @@ Available Emulators
   * DT binding: :dtcompatible:`zephyr,i2c-emul-controller`
 
 **RTC emulator**
-  * Emulates an RTC with a timed work-queue item.
+  * Emulated RTC peripheral. See :ref:`RTC emulated device section <rtc_api_emul_dev>`
   * Main Kconfig option: :kconfig:option:`CONFIG_RTC_EMUL`
   * DT binding: :dtcompatible:`zephyr,rtc-emul`
 
@@ -84,6 +88,11 @@ Available Emulators
   * Emulated SPI bus. See :ref:`bus emulators <bus_emul>`.
   * Main Kconfig option: :kconfig:option:`CONFIG_SPI_EMUL`
   * DT binding: :dtcompatible:`zephyr,spi-emul-controller`
+
+**MSPI emulator**
+  * Emulated MSPI bus. See :ref:`bus emulators <bus_emul>`.
+  * Main Kconfig option: :kconfig:option:`CONFIG_MSPI_EMUL`
+  * DT binding: :dtcompatible:`zephyr,mspi-emul-controller`
 
 **UART emulator**
   * Emulated UART bus. See :ref:`bus emulators <bus_emul>`.

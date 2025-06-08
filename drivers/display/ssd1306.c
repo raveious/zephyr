@@ -23,6 +23,8 @@ LOG_MODULE_REGISTER(ssd1306, CONFIG_DISPLAY_LOG_LEVEL);
 #define SSD1306_PANEL_VCOM_DESEL_LEVEL	0x20
 #define SSD1306_PANEL_PUMP_VOLTAGE	SSD1306_SET_PUMP_VOLTAGE_90
 
+#define SSD1306_PANEL_VCOM_DESEL_LEVEL_SSD1309  0x34
+
 #ifndef SSD1306_ADDRESSING_MODE
 #define SSD1306_ADDRESSING_MODE		(SSD1306_SET_MEM_ADDRESSING_HORIZONTAL)
 #endif
@@ -41,6 +43,7 @@ struct ssd1306_config {
 	union ssd1306_bus bus;
 	struct gpio_dt_spec data_cmd;
 	struct gpio_dt_spec reset;
+	struct gpio_dt_spec supply;
 	ssd1306_bus_ready_fn bus_ready;
 	ssd1306_write_bus_fn write_bus;
 	ssd1306_bus_name_fn bus_name;
@@ -55,16 +58,18 @@ struct ssd1306_config {
 	bool com_invdir;
 	bool com_sequential;
 	bool color_inversion;
+	bool ssd1309_compatible;
 	bool sh1106_compatible;
 	int ready_time_ms;
+	bool use_internal_iref;
 };
 
 struct ssd1306_data {
-	uint8_t contrast;
-	uint8_t scan_mode;
+	enum display_pixel_format pf;
 };
 
 #if (DT_HAS_COMPAT_ON_BUS_STATUS_OKAY(solomon_ssd1306fb, i2c) || \
+	DT_HAS_COMPAT_ON_BUS_STATUS_OKAY(solomon_ssd1309fb, i2c) || \
 	DT_HAS_COMPAT_ON_BUS_STATUS_OKAY(sinowealth_sh1106, i2c))
 static bool ssd1306_bus_ready_i2c(const struct device *dev)
 {
@@ -92,6 +97,7 @@ static const char *ssd1306_bus_name_i2c(const struct device *dev)
 #endif
 
 #if (DT_HAS_COMPAT_ON_BUS_STATUS_OKAY(solomon_ssd1306fb, spi) || \
+	DT_HAS_COMPAT_ON_BUS_STATUS_OKAY(solomon_ssd1309fb, spi) || \
 	DT_HAS_COMPAT_ON_BUS_STATUS_OKAY(sinowealth_sh1106, spi))
 static bool ssd1306_bus_ready_spi(const struct device *dev)
 {
@@ -107,7 +113,7 @@ static bool ssd1306_bus_ready_spi(const struct device *dev)
 static int ssd1306_write_bus_spi(const struct device *dev, uint8_t *buf, size_t len, bool command)
 {
 	const struct ssd1306_config *config = dev->config;
-	int errno;
+	int ret;
 
 	gpio_pin_set_dt(&config->data_cmd, command ? 0 : 1);
 	struct spi_buf tx_buf = {
@@ -120,9 +126,9 @@ static int ssd1306_write_bus_spi(const struct device *dev, uint8_t *buf, size_t 
 		.count = 1
 	};
 
-	errno = spi_write_dt(&config->bus.spi, &tx_bufs);
+	ret = spi_write_dt(&config->bus.spi, &tx_bufs);
 
-	return errno;
+	return ret;
 }
 
 static const char *ssd1306_bus_name_spi(const struct device *dev)
@@ -167,7 +173,8 @@ static inline int ssd1306_set_timing_setting(const struct device *dev)
 			     SSD1306_SET_CHARGE_PERIOD,
 			     config->prechargep,
 			     SSD1306_SET_VCOM_DESELECT_LEVEL,
-			     SSD1306_PANEL_VCOM_DESEL_LEVEL};
+			     config->ssd1309_compatible ? SSD1306_PANEL_VCOM_DESEL_LEVEL_SSD1309 :
+				SSD1306_PANEL_VCOM_DESEL_LEVEL};
 
 	return ssd1306_write_bus(dev, cmd_buf, sizeof(cmd_buf), true);
 }
@@ -202,20 +209,50 @@ static inline int ssd1306_set_charge_pump(const struct device *dev)
 	return ssd1306_write_bus(dev, cmd_buf, sizeof(cmd_buf), true);
 }
 
+static inline int ssd1306_set_iref_mode(const struct device *dev)
+{
+	int ret = 0;
+	const struct ssd1306_config *config = dev->config;
+	uint8_t cmd_buf[] = {
+		SSD1306_SET_IREF_MODE,
+		SSD1306_SET_IREF_MODE_INTERNAL,
+	};
+
+	if (config->use_internal_iref) {
+		ret = ssd1306_write_bus(dev, cmd_buf, sizeof(cmd_buf), true);
+	}
+
+	return ret;
+}
+
 static int ssd1306_resume(const struct device *dev)
 {
+	const struct ssd1306_config *config = dev->config;
 	uint8_t cmd_buf[] = {
 		SSD1306_DISPLAY_ON,
 	};
+
+	/* Turn on supply if pin connected */
+	if (config->supply.port) {
+		gpio_pin_set_dt(&config->supply, 1);
+		k_sleep(K_MSEC(SSD1306_SUPPLY_DELAY));
+	}
 
 	return ssd1306_write_bus(dev, cmd_buf, sizeof(cmd_buf), true);
 }
 
 static int ssd1306_suspend(const struct device *dev)
 {
+	const struct ssd1306_config *config = dev->config;
 	uint8_t cmd_buf[] = {
 		SSD1306_DISPLAY_OFF,
 	};
+
+	/* Turn off supply if pin connected */
+	if (config->supply.port) {
+		gpio_pin_set_dt(&config->supply, 0);
+		k_sleep(K_MSEC(SSD1306_SUPPLY_DELAY));
+	}
 
 	return ssd1306_write_bus(dev, cmd_buf, sizeof(cmd_buf), true);
 }
@@ -224,12 +261,14 @@ static int ssd1306_write_default(const struct device *dev, const uint16_t x, con
 				 const struct display_buffer_descriptor *desc, const void *buf,
 				 const size_t buf_len)
 {
+	const struct ssd1306_config *config = dev->config;
+	uint8_t x_off = config->segment_offset;
 	uint8_t cmd_buf[] = {
 		SSD1306_SET_MEM_ADDRESSING_MODE,
 		SSD1306_ADDRESSING_MODE,
 		SSD1306_SET_COLUMN_ADDRESS,
-		x,
-		(x + desc->width - 1),
+		x + x_off,
+		(x + desc->width - 1) + x_off,
 		SSD1306_SET_PAGE_ADDRESS,
 		y/8,
 		((y + desc->height)/8 - 1)
@@ -288,7 +327,7 @@ static int ssd1306_write(const struct device *dev, const uint16_t x, const uint1
 	size_t buf_len;
 
 	if (desc->pitch < desc->width) {
-		LOG_ERR("Pitch is smaller then width");
+		LOG_ERR("Pitch is smaller than width");
 		return -1;
 	}
 
@@ -318,28 +357,6 @@ static int ssd1306_write(const struct device *dev, const uint16_t x, const uint1
 	return ssd1306_write_default(dev, x, y, desc, buf, buf_len);
 }
 
-static int ssd1306_read(const struct device *dev, const uint16_t x,
-			const uint16_t y,
-			const struct display_buffer_descriptor *desc,
-			void *buf)
-{
-	LOG_ERR("Unsupported");
-	return -ENOTSUP;
-}
-
-static void *ssd1306_get_framebuffer(const struct device *dev)
-{
-	LOG_ERR("Unsupported");
-	return NULL;
-}
-
-static int ssd1306_set_brightness(const struct device *dev,
-				  const uint8_t brightness)
-{
-	LOG_WRN("Unsupported");
-	return -ENOTSUP;
-}
-
 static int ssd1306_set_contrast(const struct device *dev, const uint8_t contrast)
 {
 	uint8_t cmd_buf[] = {
@@ -354,35 +371,50 @@ static void ssd1306_get_capabilities(const struct device *dev,
 				     struct display_capabilities *caps)
 {
 	const struct ssd1306_config *config = dev->config;
-	memset(caps, 0, sizeof(struct display_capabilities));
+	struct ssd1306_data *data = dev->data;
+
 	caps->x_resolution = config->width;
 	caps->y_resolution = config->height;
-	caps->supported_pixel_formats = PIXEL_FORMAT_MONO10;
-	caps->current_pixel_format = PIXEL_FORMAT_MONO10;
+	caps->supported_pixel_formats = PIXEL_FORMAT_MONO10 | PIXEL_FORMAT_MONO01;
+	caps->current_pixel_format = data->pf;
 	caps->screen_info = SCREEN_INFO_MONO_VTILED;
-}
-
-static int ssd1306_set_orientation(const struct device *dev,
-				   const enum display_orientation
-				   orientation)
-{
-	LOG_ERR("Unsupported");
-	return -ENOTSUP;
+	caps->current_orientation = DISPLAY_ORIENTATION_NORMAL;
 }
 
 static int ssd1306_set_pixel_format(const struct device *dev,
 				    const enum display_pixel_format pf)
 {
-	if (pf == PIXEL_FORMAT_MONO10) {
+	struct ssd1306_data *data = dev->data;
+	uint8_t cmd;
+	int ret;
+
+	if (pf == data->pf) {
 		return 0;
 	}
-	LOG_ERR("Unsupported");
-	return -ENOTSUP;
+
+	if (pf == PIXEL_FORMAT_MONO10) {
+		cmd = SSD1306_SET_REVERSE_DISPLAY;
+	} else if (pf == PIXEL_FORMAT_MONO01) {
+		cmd = SSD1306_SET_NORMAL_DISPLAY;
+	} else {
+		LOG_WRN("Unsupported pixel format");
+		return -ENOTSUP;
+	}
+
+	ret = ssd1306_write_bus(dev, &cmd, 1, true);
+	if (ret) {
+		return ret;
+	}
+
+	data->pf = pf;
+
+	return 0;
 }
 
 static int ssd1306_init_device(const struct device *dev)
 {
 	const struct ssd1306_config *config = dev->config;
+	struct ssd1306_data *data = dev->data;
 
 	uint8_t cmd_buf[] = {
 		SSD1306_SET_ENTIRE_DISPLAY_OFF,
@@ -390,12 +422,19 @@ static int ssd1306_init_device(const struct device *dev)
 					 : SSD1306_SET_NORMAL_DISPLAY),
 	};
 
+	data->pf = config->color_inversion ? PIXEL_FORMAT_MONO10 : PIXEL_FORMAT_MONO01;
+	/* Turn on supply if pin connected */
+	if (config->supply.port) {
+		gpio_pin_set_dt(&config->supply, 1);
+		k_sleep(K_MSEC(SSD1306_SUPPLY_DELAY));
+	}
+
 	/* Reset if pin connected */
 	if (config->reset.port) {
-		k_sleep(K_MSEC(SSD1306_RESET_DELAY));
 		gpio_pin_set_dt(&config->reset, 1);
 		k_sleep(K_MSEC(SSD1306_RESET_DELAY));
 		gpio_pin_set_dt(&config->reset, 0);
+		k_sleep(K_MSEC(SSD1306_RESET_DELAY));
 	}
 
 	/* Turn display off */
@@ -415,8 +454,14 @@ static int ssd1306_init_device(const struct device *dev)
 		return -EIO;
 	}
 
-	if (ssd1306_set_charge_pump(dev)) {
-		return -EIO;
+	if (!config->ssd1309_compatible) {
+		if (ssd1306_set_charge_pump(dev)) {
+			return -EIO;
+		}
+
+		if (ssd1306_set_iref_mode(dev)) {
+			return -EIO;
+		}
 	}
 
 	if (ssd1306_write_bus(dev, cmd_buf, sizeof(cmd_buf), true)) {
@@ -435,8 +480,7 @@ static int ssd1306_init_device(const struct device *dev)
 static int ssd1306_init(const struct device *dev)
 {
 	const struct ssd1306_config *config = dev->config;
-
-	LOG_DBG("");
+	int ret;
 
 	k_sleep(K_TIMEOUT_ABS_MS(config->ready_time_ms));
 
@@ -445,13 +489,27 @@ static int ssd1306_init(const struct device *dev)
 		return -EINVAL;
 	}
 
-	if (config->reset.port) {
-		int ret;
+	if (config->supply.port) {
+		ret = gpio_pin_configure_dt(&config->supply,
+					    GPIO_OUTPUT_INACTIVE);
+		if (ret < 0) {
+			return ret;
+		}
+		if (!gpio_is_ready_dt(&config->supply)) {
+			LOG_ERR("Supply GPIO device not ready");
+			return -ENODEV;
+		}
+	}
 
+	if (config->reset.port) {
 		ret = gpio_pin_configure_dt(&config->reset,
 					    GPIO_OUTPUT_INACTIVE);
 		if (ret < 0) {
 			return ret;
+		}
+		if (!gpio_is_ready_dt(&config->reset)) {
+			LOG_ERR("Reset GPIO device not ready");
+			return -ENODEV;
 		}
 	}
 
@@ -463,17 +521,13 @@ static int ssd1306_init(const struct device *dev)
 	return 0;
 }
 
-static struct display_driver_api ssd1306_driver_api = {
+static DEVICE_API(display, ssd1306_driver_api) = {
 	.blanking_on = ssd1306_suspend,
 	.blanking_off = ssd1306_resume,
 	.write = ssd1306_write,
-	.read = ssd1306_read,
-	.get_framebuffer = ssd1306_get_framebuffer,
-	.set_brightness = ssd1306_set_brightness,
 	.set_contrast = ssd1306_set_contrast,
 	.get_capabilities = ssd1306_get_capabilities,
 	.set_pixel_format = ssd1306_set_pixel_format,
-	.set_orientation = ssd1306_set_orientation,
 };
 
 #define SSD1306_CONFIG_SPI(node_id)                                                                \
@@ -495,6 +549,7 @@ static struct display_driver_api ssd1306_driver_api = {
 	static struct ssd1306_data data##node_id;                                                  \
 	static const struct ssd1306_config config##node_id = {                                     \
 		.reset = GPIO_DT_SPEC_GET_OR(node_id, reset_gpios, {0}),                           \
+		.supply = GPIO_DT_SPEC_GET_OR(node_id, supply_gpios, {0}),                         \
 		.height = DT_PROP(node_id, height),                                                \
 		.width = DT_PROP(node_id, width),                                                  \
 		.segment_offset = DT_PROP(node_id, segment_offset),                                \
@@ -506,8 +561,10 @@ static struct display_driver_api ssd1306_driver_api = {
 		.com_sequential = DT_PROP(node_id, com_sequential),                                \
 		.prechargep = DT_PROP(node_id, prechargep),                                        \
 		.color_inversion = DT_PROP(node_id, inversion_on),                                 \
+		.ssd1309_compatible = DT_NODE_HAS_COMPAT(node_id, solomon_ssd1309fb),              \
 		.sh1106_compatible = DT_NODE_HAS_COMPAT(node_id, sinowealth_sh1106),               \
 		.ready_time_ms = DT_PROP(node_id, ready_time_ms),                                  \
+		.use_internal_iref = DT_PROP(node_id, use_internal_iref),                          \
 		COND_CODE_1(DT_ON_BUS(node_id, spi), (SSD1306_CONFIG_SPI(node_id)),                \
 			    (SSD1306_CONFIG_I2C(node_id)))                                         \
 	};                                                                                         \
@@ -516,4 +573,5 @@ static struct display_driver_api ssd1306_driver_api = {
 			 POST_KERNEL, CONFIG_DISPLAY_INIT_PRIORITY, &ssd1306_driver_api);
 
 DT_FOREACH_STATUS_OKAY(solomon_ssd1306fb, SSD1306_DEFINE)
+DT_FOREACH_STATUS_OKAY(solomon_ssd1309fb, SSD1306_DEFINE)
 DT_FOREACH_STATUS_OKAY(sinowealth_sh1106, SSD1306_DEFINE)

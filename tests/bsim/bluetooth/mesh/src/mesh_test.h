@@ -23,6 +23,7 @@
 
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/mesh.h>
+#include <mesh/adv.h>
 
 #define TEST_MOD_ID 0x8888
 #define TEST_MSG_OP_1  BT_MESH_MODEL_OP_1(0x0f)
@@ -195,12 +196,20 @@ int bt_mesh_test_send_async(uint16_t addr, const uint8_t *uuid, size_t len,
 			    enum bt_mesh_test_send_flags flags,
 			    const struct bt_mesh_send_cb *send_cb,
 			    void *cb_data);
-int bt_mesh_test_send_ra(uint16_t addr, uint8_t *data, size_t len,
-			 const struct bt_mesh_send_cb *send_cb,
-			 void *cb_data);
-void bt_mesh_test_ra_cb_setup(void (*cb)(uint8_t *, size_t));
+int bt_mesh_test_send_data(uint16_t addr, const uint8_t *uuid, uint8_t *data, size_t len,
+			   const struct bt_mesh_send_cb *send_cb, void *cb_data);
+void bt_mesh_test_data_cb_setup(void (*cb)(uint8_t *, size_t));
 
 uint16_t bt_mesh_test_own_addr_get(uint16_t start_addr);
+
+void bt_mesh_test_send_over_adv(void *data, size_t len);
+void bt_mesh_test_send_over_adv_cb(void *data, size_t len, const struct bt_mesh_send_cb *cb,
+				   void *cb_data);
+/* Wait for a packet (i. e. an advertisement or a GATT frame) sent by a device.
+ * `scan_cb` is triggered if the packet is received, and must release `observer_sem` when finished.
+ */
+int bt_mesh_test_wait_for_packet(bt_le_scan_cb_t scan_cb, struct k_sem *observer_sem,
+				 uint16_t wait);
 
 #if defined(CONFIG_BT_MESH_SAR_CFG)
 void bt_mesh_test_sar_conf_set(struct bt_mesh_sar_tx *tx_set, struct bt_mesh_sar_rx *rx_set);

@@ -21,14 +21,3 @@ source $(dirname "${BASH_SOURCE[0]}")/../../_mesh_test.sh
 RunTest mesh_beacon_interval \
 	beacon_tx_secure_beacon_interval \
 	beacon_rx_secure_beacon_interval
-
-conf=prj_mesh1d1_conf
-RunTest mesh_beacon_interval_1d1 \
-	beacon_tx_secure_beacon_interval \
-	beacon_rx_secure_beacon_interval
-
-conf=prj_mesh1d1_conf
-overlay=overlay_psa_conf
-RunTest mesh_beacon_interval_psa \
-	beacon_tx_secure_beacon_interval \
-	beacon_rx_secure_beacon_interval

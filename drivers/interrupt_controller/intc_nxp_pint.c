@@ -10,8 +10,11 @@
 #include <zephyr/irq.h>
 #include <errno.h>
 #include <zephyr/drivers/interrupt_controller/nxp_pint.h>
+#include <zephyr/pm/device.h>
 
 #include <fsl_inputmux.h>
+
+#include "intc_nxp_pint/power.h"
 
 #define DT_DRV_COMPAT nxp_pint
 
@@ -23,6 +26,7 @@ struct pint_irq_slot {
 	void *user_data;
 	uint8_t pin: 6;
 	uint8_t used: 1;
+	uint8_t irq;
 };
 
 #define NO_PINT_ID 0xFF
@@ -58,9 +62,10 @@ static void attach_pin_to_pint(uint8_t pin, uint8_t pint_slot)
  * @param pin: pin to use as interrupt source
  *     0-64, corresponding to GPIO0 pin 1 - GPIO1 pin 31)
  * @param trigger: one of nxp_pint_trigger flags
+ * @param wake: indicates if the pin should wakeup the system
  * @return 0 on success, or negative value on error
  */
-int nxp_pint_pin_enable(uint8_t pin, enum nxp_pint_trigger trigger)
+int nxp_pint_pin_enable(uint8_t pin, enum nxp_pint_trigger trigger, bool wake)
 {
 	uint8_t slot = 0U;
 
@@ -91,6 +96,8 @@ int nxp_pint_pin_enable(uint8_t pin, enum nxp_pint_trigger trigger)
 	 * driver handles the IRQ
 	 */
 	PINT_PinInterruptConfig(pint_base, slot, trigger, NULL);
+	nxp_pint_pin_deep_sleep_irq(pint_irq_cfg[slot].irq, wake);
+
 	return 0;
 }
 
@@ -174,6 +181,24 @@ static void nxp_pint_isr(uint8_t *slot)
 	}
 }
 
+static int intc_nxp_pm_action(const struct device *dev, enum pm_device_action action)
+{
+	switch (action) {
+	case PM_DEVICE_ACTION_RESUME:
+		break;
+	case PM_DEVICE_ACTION_SUSPEND:
+		break;
+	case PM_DEVICE_ACTION_TURN_OFF:
+		break;
+	case PM_DEVICE_ACTION_TURN_ON:
+		PINT_Init(pint_base);
+		break;
+	default:
+		return -ENOTSUP;
+	}
+
+	return 0;
+}
 
 /* Defines PINT IRQ handler for a given irq index */
 #define NXP_PINT_IRQ(idx, node_id)						\
@@ -184,6 +209,7 @@ static void nxp_pint_isr(uint8_t *slot)
 			    DT_IRQ_BY_IDX(node_id, idx, priority),		\
 			    nxp_pint_isr, &nxp_pint_idx_##idx, 0);		\
 		irq_enable(DT_IRQ_BY_IDX(node_id, idx, irq));			\
+		pint_irq_cfg[idx].irq = DT_IRQ_BY_IDX(node_id, idx, irq);	\
 	} while (false)))
 
 static int intc_nxp_pint_init(const struct device *dev)
@@ -193,10 +219,12 @@ static int intc_nxp_pint_init(const struct device *dev)
 	 * parameter.
 	 */
 	LISTIFY(8, NXP_PINT_IRQ, (;), DT_INST(0, DT_DRV_COMPAT));
-	PINT_Init(pint_base);
 	memset(pin_pint_id, NO_PINT_ID, ARRAY_SIZE(pin_pint_id));
-	return 0;
+
+	return pm_device_driver_init(dev, intc_nxp_pm_action);
 }
 
-DEVICE_DT_INST_DEFINE(0, intc_nxp_pint_init, NULL, NULL, NULL,
+PM_DEVICE_DT_INST_DEFINE(0, intc_nxp_pm_action);
+
+DEVICE_DT_INST_DEFINE(0, intc_nxp_pint_init, PM_DEVICE_DT_INST_GET(0), NULL, NULL,
 		      PRE_KERNEL_1, CONFIG_INTC_INIT_PRIORITY, NULL);

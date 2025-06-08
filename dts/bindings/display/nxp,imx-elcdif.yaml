@@ -27,12 +27,11 @@ properties:
 
   backlight-gpios:
     type: phandle-array
-    required: true
     description:
       LCB backlight control gpio. Driver will initialize this GPIO to active high
 
   nxp,pxp:
     type: phandle
     description:
-      NXP PXP device phandle. The LCDIF can utilize the PXP for acclerated
+      NXP PXP device phandle. The LCDIF can utilize the PXP for accelerated
       display rotation via the DMA API, when present and enabled.

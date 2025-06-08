@@ -403,9 +403,17 @@ static int max1125x_read_sample(const struct device *dev)
 	 * the available input range is limited to the minimum or maximum
 	 * data value.
 	 */
+
+	if (config->resolution > 24 || config->resolution < 1) {
+		LOG_ERR("Unsupported ADC resolution: %u", config->resolution);
+		return -EINVAL;
+	}
+
 	is_positive = buffer_rx[(config->resolution / 8)] >> 7;
+
 	if (is_positive) {
-		*data->buffer++ = sys_get_be24(buffer_rx) - (1 << (config->resolution - 1));
+		/* Ensure left shift is done using unsigned literal to avoid overflow. */
+		*data->buffer++ = sys_get_be24(buffer_rx) - (1U << (config->resolution - 1));
 	} else {
 		*data->buffer++ = sys_get_be24(buffer_rx + 1);
 	}
@@ -755,7 +763,7 @@ static int max1125x_init(const struct device *dev)
 	}
 
 	k_tid_t tid = k_thread_create(
-		&data->thread, data->stack, K_THREAD_STACK_SIZEOF(data->stack),
+		&data->thread, data->stack, K_KERNEL_STACK_SIZEOF(data->stack),
 		max1125x_acquisition_thread, (void *)dev, NULL, NULL,
 		CONFIG_ADC_MAX1125X_ACQUISITION_THREAD_PRIORITY, 0, K_NO_WAIT);
 	k_thread_name_set(tid, "adc_max1125x");
@@ -765,7 +773,7 @@ static int max1125x_init(const struct device *dev)
 	return 0;
 }
 
-static const struct adc_driver_api max1125x_api = {
+static DEVICE_API(adc, max1125x_api) = {
 	.channel_setup = max1125x_channel_setup,
 	.read = max1125x_read,
 	.ref_internal = 2048,

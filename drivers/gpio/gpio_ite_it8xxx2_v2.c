@@ -27,6 +27,8 @@
 
 LOG_MODULE_REGISTER(gpio_it8xxx2, LOG_LEVEL_ERR);
 
+#define ITE_GPIO_MAX_PINS 8
+
 /*
  * Structure gpio_ite_cfg is about the setting of GPIO
  * this config will be used at initial time
@@ -54,6 +56,8 @@ struct gpio_ite_cfg {
 	uint8_t has_volt_sel[8];
 	/* Number of pins per group of GPIO */
 	uint8_t num_pins;
+	/* gpioksi, gpioksoh and gpioksol extended setting */
+	bool kbs_ctrl;
 };
 
 /* Structure gpio_ite_data is about callback function */
@@ -159,25 +163,57 @@ static int gpio_ite_configure(const struct device *dev,
 	}
 
 	/* Set input or output. */
-	if (flags & GPIO_OUTPUT) {
-		ECREG(reg_gpcr) = (ECREG(reg_gpcr) | GPCR_PORT_PIN_MODE_OUTPUT) &
-				~GPCR_PORT_PIN_MODE_INPUT;
+	if (gpio_config->kbs_ctrl) {
+		/* Handle keyboard scan controller */
+		uint8_t ksxgctrlr = ECREG(reg_gpcr);
+
+		ksxgctrlr |= KSIX_KSOX_KBS_GPIO_MODE;
+		if (flags & GPIO_OUTPUT) {
+			ksxgctrlr |= KSIX_KSOX_GPIO_OUTPUT;
+		} else {
+			ksxgctrlr &= ~KSIX_KSOX_GPIO_OUTPUT;
+		}
+		ECREG(reg_gpcr) = ksxgctrlr;
 	} else {
-		ECREG(reg_gpcr) = (ECREG(reg_gpcr) | GPCR_PORT_PIN_MODE_INPUT) &
+		/* Handle regular GPIO controller */
+		if (flags & GPIO_OUTPUT) {
+			ECREG(reg_gpcr) = (ECREG(reg_gpcr) | GPCR_PORT_PIN_MODE_OUTPUT) &
+				~GPCR_PORT_PIN_MODE_INPUT;
+		} else {
+			ECREG(reg_gpcr) = (ECREG(reg_gpcr) | GPCR_PORT_PIN_MODE_INPUT) &
 				~GPCR_PORT_PIN_MODE_OUTPUT;
+		}
 	}
 
 	/* Handle pullup / pulldown */
-	if (flags & GPIO_PULL_UP) {
-		ECREG(reg_gpcr) = (ECREG(reg_gpcr) | GPCR_PORT_PIN_MODE_PULLUP) &
-				~GPCR_PORT_PIN_MODE_PULLDOWN;
-	} else if (flags & GPIO_PULL_DOWN) {
-		ECREG(reg_gpcr) = (ECREG(reg_gpcr) | GPCR_PORT_PIN_MODE_PULLDOWN) &
-				~GPCR_PORT_PIN_MODE_PULLUP;
+	if (gpio_config->kbs_ctrl) {
+		/* Handle keyboard scan controller */
+		uint8_t ksxgctrlr = ECREG(reg_gpcr);
+
+		if (flags & GPIO_PULL_UP) {
+			ksxgctrlr = (ksxgctrlr | KSIX_KSOX_GPIO_PULLUP) &
+				~KSIX_KSOX_GPIO_PULLDOWN;
+		} else if (flags & GPIO_PULL_DOWN) {
+			ksxgctrlr = (ksxgctrlr | KSIX_KSOX_GPIO_PULLDOWN) &
+				~KSIX_KSOX_GPIO_PULLUP;
+		} else {
+			/* No pull up/down */
+			ksxgctrlr &= ~(KSIX_KSOX_GPIO_PULLUP | KSIX_KSOX_GPIO_PULLDOWN);
+		}
+		ECREG(reg_gpcr) = ksxgctrlr;
 	} else {
-		/* No pull up/down */
-		ECREG(reg_gpcr) &= ~(GPCR_PORT_PIN_MODE_PULLUP |
-				GPCR_PORT_PIN_MODE_PULLDOWN);
+		/* Handle regular GPIO controller */
+		if (flags & GPIO_PULL_UP) {
+			ECREG(reg_gpcr) = (ECREG(reg_gpcr) | GPCR_PORT_PIN_MODE_PULLUP) &
+					~GPCR_PORT_PIN_MODE_PULLDOWN;
+		} else if (flags & GPIO_PULL_DOWN) {
+			ECREG(reg_gpcr) = (ECREG(reg_gpcr) | GPCR_PORT_PIN_MODE_PULLDOWN) &
+					~GPCR_PORT_PIN_MODE_PULLUP;
+		} else {
+			/* No pull up/down */
+			ECREG(reg_gpcr) &= ~(GPCR_PORT_PIN_MODE_PULLUP |
+					GPCR_PORT_PIN_MODE_PULLDOWN);
+		}
 	}
 
 unlock_and_return:
@@ -346,7 +382,7 @@ static void gpio_ite_isr(const void *arg)
 	uint8_t num_pins = gpio_config->num_pins;
 	uint8_t pin;
 
-	for (pin = 0; pin <= num_pins; pin++) {
+	for (pin = 0; pin < num_pins; pin++) {
 		if (irq == gpio_config->gpio_irq[pin]) {
 			volatile uint8_t *reg_base =
 				(uint8_t *)gpio_config->wuc_base[pin];
@@ -468,7 +504,7 @@ static int gpio_ite_pin_interrupt_configure(const struct device *dev,
 	return 0;
 }
 
-static const struct gpio_driver_api gpio_ite_driver_api = {
+static DEVICE_API(gpio, gpio_ite_driver_api) = {
 	.pin_configure = gpio_ite_configure,
 #ifdef CONFIG_GPIO_GET_CONFIG
 	.pin_get_config = gpio_ite_get_config,
@@ -495,32 +531,27 @@ static int gpio_ite_init(const struct device *dev)
 	return 0;
 }
 
-#define GPIO_ITE_DEV_CFG_DATA(inst)                                \
-static struct gpio_ite_data gpio_ite_data_##inst;                  \
-static const struct gpio_ite_cfg gpio_ite_cfg_##inst = {           \
-	.common = {                                                \
-		.port_pin_mask =                                   \
-			GPIO_PORT_PIN_MASK_FROM_DT_INST(inst)      \
-	},                                                         \
-	.reg_gpdr = DT_INST_REG_ADDR_BY_IDX(inst, 0),              \
-	.reg_gpdmr = DT_INST_REG_ADDR_BY_IDX(inst, 1),             \
-	.reg_gpotr = DT_INST_REG_ADDR_BY_IDX(inst, 2),             \
-	.reg_p18scr = DT_INST_REG_ADDR_BY_IDX(inst, 3),            \
-	.reg_gpcr = DT_INST_REG_ADDR_BY_IDX(inst, 4),              \
-	.wuc_base = DT_INST_PROP_OR(inst, wuc_base, {0}),          \
-	.wuc_mask = DT_INST_PROP_OR(inst, wuc_mask, {0}),          \
-	.gpio_irq = IT8XXX2_DT_GPIO_IRQ_LIST(inst),                \
-	.has_volt_sel = DT_INST_PROP_OR(inst, has_volt_sel, {0}),  \
-	.num_pins = DT_INST_PROP(inst, ngpios),                    \
-	};                                                         \
-DEVICE_DT_INST_DEFINE(inst,                                        \
-		      gpio_ite_init,                               \
-		      NULL,                                        \
-		      &gpio_ite_data_##inst,                       \
-		      &gpio_ite_cfg_##inst,                        \
-		      PRE_KERNEL_1,                                \
-		      CONFIG_GPIO_INIT_PRIORITY,                   \
-		      &gpio_ite_driver_api);
+#define GPIO_ITE_DEV_CFG_DATA(inst)                                                                \
+	BUILD_ASSERT(DT_INST_PROP(inst, ngpios) <= ITE_GPIO_MAX_PINS,                              \
+		     "The maximum number of pins per port is 8.");                                 \
+	static struct gpio_ite_data gpio_ite_data_##inst;                                          \
+	static const struct gpio_ite_cfg gpio_ite_cfg_##inst = {                                   \
+		.common = {.port_pin_mask = GPIO_PORT_PIN_MASK_FROM_DT_INST(inst)},                \
+		.reg_gpdr = DT_INST_REG_ADDR_BY_IDX(inst, 0),                                      \
+		.reg_gpdmr = DT_INST_REG_ADDR_BY_IDX(inst, 1),                                     \
+		.reg_gpotr = DT_INST_REG_ADDR_BY_IDX(inst, 2),                                     \
+		.reg_p18scr = DT_INST_REG_ADDR_BY_IDX(inst, 3),                                    \
+		.reg_gpcr = DT_INST_REG_ADDR_BY_IDX(inst, 4),                                      \
+		.wuc_base = DT_INST_PROP_OR(inst, wuc_base, {0}),                                  \
+		.wuc_mask = DT_INST_PROP_OR(inst, wuc_mask, {0}),                                  \
+		.gpio_irq = IT8XXX2_DT_GPIO_IRQ_LIST(inst),                                        \
+		.has_volt_sel = DT_INST_PROP_OR(inst, has_volt_sel, {0}),                          \
+		.num_pins = DT_INST_PROP(inst, ngpios),                                            \
+		.kbs_ctrl = DT_INST_PROP_OR(inst, keyboard_controller, 0),                         \
+	};                                                                                         \
+	DEVICE_DT_INST_DEFINE(inst, gpio_ite_init, NULL, &gpio_ite_data_##inst,                    \
+			      &gpio_ite_cfg_##inst, PRE_KERNEL_1, CONFIG_GPIO_INIT_PRIORITY,       \
+			      &gpio_ite_driver_api);
 
 DT_INST_FOREACH_STATUS_OKAY(GPIO_ITE_DEV_CFG_DATA)
 

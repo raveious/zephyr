@@ -18,13 +18,15 @@ LOG_MODULE_REGISTER(flash_stm32wba, CONFIG_FLASH_LOG_LEVEL);
 #include "flash_manager.h"
 #include "flash_driver.h"
 
+#include <stm32_ll_utils.h>
+
 /* Let's wait for double the max erase time to be sure that the operation is
  * completed.
  */
 #define STM32_FLASH_TIMEOUT	\
 	(2 * DT_PROP(DT_INST(0, st_stm32_nv_flash), max_erase_time))
 
-extern struct k_work_q ble_ctlr_work_q;
+extern struct k_work_q ble_ctrl_work_q;
 struct k_work fm_work;
 
 static const struct flash_parameters flash_stm32_parameters = {
@@ -47,7 +49,7 @@ struct FM_CallbackNode cb_ptr = {
 
 void FM_ProcessRequest(void)
 {
-	k_work_submit_to_queue(&ble_ctlr_work_q, &fm_work);
+	k_work_submit_to_queue(&ble_ctrl_work_q, &fm_work);
 }
 
 void FM_BackgroundProcess_Entry(struct k_work *work)
@@ -66,17 +68,6 @@ bool flash_stm32_valid_range(const struct device *dev, off_t offset,
 	return flash_stm32_range_exists(dev, offset, len);
 }
 
-
-static inline void flash_stm32_sem_take(const struct device *dev)
-{
-	k_sem_take(&FLASH_STM32_PRIV(dev)->sem, K_FOREVER);
-}
-
-static inline void flash_stm32_sem_give(const struct device *dev)
-{
-	k_sem_give(&FLASH_STM32_PRIV(dev)->sem);
-}
-
 static int flash_stm32_read(const struct device *dev, off_t offset,
 			    void *data,
 			    size_t len)
@@ -93,7 +84,7 @@ static int flash_stm32_read(const struct device *dev, off_t offset,
 
 	flash_stm32_sem_take(dev);
 
-	memcpy(data, (uint8_t *) CONFIG_FLASH_BASE_ADDRESS + offset, len);
+	memcpy(data, (uint8_t *) FLASH_STM32_BASE_ADDRESS + offset, len);
 
 	flash_stm32_sem_give(dev);
 
@@ -153,7 +144,7 @@ static int flash_stm32_write(const struct device *dev, off_t offset,
 	LOG_DBG("Write offset: %p, len: %zu", (void *)offset, len);
 
 	rc = FM_Write((uint32_t *)data,
-		      (uint32_t *)(CONFIG_FLASH_BASE_ADDRESS + offset),
+		      (uint32_t *)(FLASH_STM32_BASE_ADDRESS + offset),
 		      (int32_t)len/4, &cb_ptr);
 	if (rc == 0) {
 		k_sem_take(&flash_busy, K_FOREVER);
@@ -172,6 +163,16 @@ static const struct flash_parameters *
 	ARG_UNUSED(dev);
 
 	return &flash_stm32_parameters;
+}
+
+/* Gives the total logical device size in bytes and return 0. */
+static int flash_stm32h7_get_size(const struct device *dev, uint64_t *size)
+{
+	ARG_UNUSED(dev);
+
+	*size = (uint64_t)LL_GetFlashSize() * 1024U;
+
+	return 0;
 }
 
 static struct flash_stm32_priv flash_data = {
@@ -198,11 +199,12 @@ void flash_stm32wba_page_layout(const struct device *dev,
 	*layout_size = 1;
 }
 
-static const struct flash_driver_api flash_stm32_api = {
+static DEVICE_API(flash, flash_stm32_api) = {
 	.erase = flash_stm32_erase,
 	.write = flash_stm32_write,
 	.read = flash_stm32_read,
 	.get_parameters = flash_stm32_get_parameters,
+	.get_size = flash_stm32_get_size,
 #ifdef CONFIG_FLASH_PAGE_LAYOUT
 	.page_layout = flash_stm32wba_page_layout,
 #endif

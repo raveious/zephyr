@@ -9,7 +9,7 @@
 #include <zephyr/debug/stack.h>
 #include <zephyr/sys/util.h>
 
-#include <zephyr/net/buf.h>
+#include <zephyr/net_buf.h>
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/hci.h>
 #include <zephyr/bluetooth/conn.h>
@@ -76,7 +76,7 @@ void bt_mesh_adv_send_start(uint16_t duration, int err, struct bt_mesh_adv_ctx *
 	}
 }
 
-static void bt_mesh_adv_send_end(int err, struct bt_mesh_adv_ctx const *ctx)
+void bt_mesh_adv_send_end(int err, struct bt_mesh_adv_ctx const *ctx)
 {
 	if (ctx->started && ctx->cb && ctx->cb->end) {
 		ctx->cb->end(err, ctx->cb_data);
@@ -136,9 +136,8 @@ void bt_mesh_adv_unref(struct bt_mesh_adv *adv)
 	}
 
 	struct k_mem_slab *slab = &local_adv_pool;
-	struct bt_mesh_adv_ctx ctx = adv->ctx;
 
-#if defined(CONFIG_BT_MESH_RELAY)
+#if (defined(CONFIG_BT_MESH_RELAY) || defined(CONFIG_BT_MESH_BRG_CFG_SRV))
 	if (adv->ctx.tag == BT_MESH_ADV_TAG_RELAY) {
 		slab = &relay_adv_pool;
 	}
@@ -151,14 +150,13 @@ void bt_mesh_adv_unref(struct bt_mesh_adv *adv)
 #endif
 
 	k_mem_slab_free(slab, (void *)adv);
-	bt_mesh_adv_send_end(0, &ctx);
 }
 
 struct bt_mesh_adv *bt_mesh_adv_create(enum bt_mesh_adv_type type,
 				       enum bt_mesh_adv_tag tag,
 				       uint8_t xmit, k_timeout_t timeout)
 {
-#if defined(CONFIG_BT_MESH_RELAY)
+#if (defined(CONFIG_BT_MESH_RELAY) || defined(CONFIG_BT_MESH_BRG_CFG_SRV))
 	if (tag == BT_MESH_ADV_TAG_RELAY) {
 		return adv_create_from_pool(&relay_adv_pool,
 					    type, tag, xmit, timeout);
@@ -204,7 +202,7 @@ struct bt_mesh_adv *bt_mesh_adv_get(k_timeout_t timeout)
 						K_POLL_MODE_NOTIFY_ONLY,
 						&bt_mesh_adv_queue,
 						0),
-#if defined(CONFIG_BT_MESH_RELAY) && \
+#if (defined(CONFIG_BT_MESH_RELAY) || defined(CONFIG_BT_MESH_BRG_CFG_SRV)) && \
 	(defined(CONFIG_BT_MESH_ADV_LEGACY) || \
 	 defined(CONFIG_BT_MESH_ADV_EXT_RELAY_USING_MAIN_ADV_SET) || \
 	 !(CONFIG_BT_MESH_RELAY_ADV_SETS))
@@ -230,9 +228,14 @@ struct bt_mesh_adv *bt_mesh_adv_get_by_tag(enum bt_mesh_adv_tag_bit tags, k_time
 		return k_fifo_get(&bt_mesh_friend_queue, timeout);
 	}
 
-	if (IS_ENABLED(CONFIG_BT_MESH_RELAY) &&
+	if ((IS_ENABLED(CONFIG_BT_MESH_RELAY) || IS_ENABLED(CONFIG_BT_MESH_BRG_CFG_SRV)) &&
 	    !(tags & BT_MESH_ADV_TAG_BIT_LOCAL)) {
 		return k_fifo_get(&bt_mesh_relay_queue, timeout);
+	}
+
+	if (IS_ENABLED(CONFIG_BT_MESH_ADV_EXT_GATT_SEPARATE) &&
+	    tags & BT_MESH_ADV_TAG_BIT_PROXY) {
+		return NULL;
 	}
 
 	return bt_mesh_adv_get(timeout);
@@ -244,7 +247,7 @@ void bt_mesh_adv_get_cancel(void)
 
 	k_fifo_cancel_wait(&bt_mesh_adv_queue);
 
-	if (IS_ENABLED(CONFIG_BT_MESH_RELAY)) {
+	if ((IS_ENABLED(CONFIG_BT_MESH_RELAY) || IS_ENABLED(CONFIG_BT_MESH_BRG_CFG_SRV))) {
 		k_fifo_cancel_wait(&bt_mesh_relay_queue);
 	}
 
@@ -258,6 +261,10 @@ void bt_mesh_adv_send(struct bt_mesh_adv *adv, const struct bt_mesh_send_cb *cb,
 {
 	LOG_DBG("type 0x%02x len %u: %s", adv->ctx.type, adv->b.len,
 		bt_hex(adv->b.data, adv->b.len));
+
+	if (atomic_test_bit(bt_mesh.flags, BT_MESH_SUSPENDED)) {
+		LOG_WRN("Sending advertisement while suspended");
+	}
 
 	adv->ctx.cb = cb;
 	adv->ctx.cb_data = cb_data;
@@ -274,7 +281,7 @@ void bt_mesh_adv_send(struct bt_mesh_adv *adv, const struct bt_mesh_send_cb *cb,
 		return;
 	}
 
-	if ((IS_ENABLED(CONFIG_BT_MESH_RELAY) &&
+	if (((IS_ENABLED(CONFIG_BT_MESH_RELAY) || IS_ENABLED(CONFIG_BT_MESH_BRG_CFG_SRV)) &&
 	    adv->ctx.tag == BT_MESH_ADV_TAG_RELAY) ||
 	    (IS_ENABLED(CONFIG_BT_MESH_PB_ADV_USE_RELAY_SETS) &&
 	     adv->ctx.tag == BT_MESH_ADV_TAG_PROV)) {
@@ -376,8 +383,8 @@ int bt_mesh_scan_active_set(bool active)
 int bt_mesh_scan_enable(void)
 {
 	struct bt_le_scan_param scan_param = {
-		.type = active_scanning ? BT_HCI_LE_SCAN_ACTIVE :
-					  BT_HCI_LE_SCAN_PASSIVE,
+		.type = active_scanning ? BT_LE_SCAN_TYPE_ACTIVE :
+					  BT_LE_SCAN_TYPE_PASSIVE,
 		.interval = MESH_SCAN_INTERVAL,
 		.window = MESH_SCAN_WINDOW
 	};

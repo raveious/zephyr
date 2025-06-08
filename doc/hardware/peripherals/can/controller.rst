@@ -70,7 +70,7 @@ in case, abort their transmission.
 This effectively gives lower number identifiers priority over higher number
 identifiers.
 
-Filters are used to whitelist identifiers that are of interest for the specific
+Filters are used to allowlist identifiers that are of interest for the specific
 node. An identifier that doesn't match any filter is ignored.
 Filters can either match exactly or a specified part of the identifier.
 This method is called masking.
@@ -203,7 +203,7 @@ The filter for this example is configured to match the identifier 0x123 exactly.
 .. code-block:: C
 
   const struct can_filter my_filter = {
-          .flags = CAN_FILTER_DATA,
+          .flags = 0U,
           .id = 0x123,
           .mask = CAN_STD_ID_MASK
   };
@@ -226,7 +226,7 @@ The filter for this example is configured to match the extended identifier
 .. code-block:: C
 
   const struct can_filter my_filter = {
-          .flags = CAN_FILTER_DATA | CAN_FILTER_IDE,
+          .flags = CAN_FILTER_IDE,
           .id = 0x1234567,
           .mask = CAN_EXT_ID_MASK
   };

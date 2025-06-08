@@ -30,12 +30,12 @@ as follows:
 
 .. zephyr-app-commands::
    :zephyr-app: samples/drivers/eeprom
-   :board: nrf52840dk_nrf52840
+   :board: nrf52840dk/nrf52840
    :goals: build
    :shield: x_nucleo_eeprma2
    :compact:
 
-For :ref:`gd32f450i_eval` board. First bridge the JP5 to USART with the jumper cap,
+For :zephyr:board:`gd32f450i_eval` board. First bridge the JP5 to USART with the jumper cap,
 Then the sample can be built and executed for the  as follows:
 
 .. zephyr-app-commands::

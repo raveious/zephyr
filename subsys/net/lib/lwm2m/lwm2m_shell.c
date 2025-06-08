@@ -17,6 +17,7 @@ LOG_MODULE_REGISTER(LOG_MODULE_NAME);
 #include <zephyr/kernel.h>
 #include <zephyr/net/lwm2m.h>
 #include <zephyr/shell/shell.h>
+#include <zephyr/sys/crc.h>
 
 #include <lwm2m_engine.h>
 #include <lwm2m_util.h>
@@ -31,7 +32,8 @@ LOG_MODULE_REGISTER(LOG_MODULE_NAME);
 	"-uX\tRead value as uintX_t\n" \
 	"-sX\tRead value as intX_t\n" \
 	"-f \tRead value as float\n" \
-	"-t \tRead value as time_t\n"
+	"-t \tRead value as time_t\n" \
+	"-crc32\tCalculate CRC32 of the content\n"
 #define LWM2M_HELP_WRITE "write PATH [OPTIONS] VALUE\nWrite into LwM2M resource\n" \
 	"-s \tWrite value as string (default)\n" \
 	"-b \tWrite value as bool\n" \
@@ -51,13 +53,15 @@ LOG_MODULE_REGISTER(LOG_MODULE_NAME);
 #define LWM2M_HELP_RESUME "LwM2M engine thread resume"
 #define LWM2M_HELP_LOCK "Lock the LwM2M registry"
 #define LWM2M_HELP_UNLOCK "Unlock the LwM2M registry"
+#define LWM2M_HELP_OBSERV "List observations"
 #define LWM2M_HELP_CACHE "cache PATH NUM\nEnable data cache for resource\n" \
 	"PATH is LwM2M path\n" \
-	"NUM how many elements to cache\n" \
+	"NUM how many elements to cache\n"
+#define LWM2M_HELP_LS "ls [PATH]\nList objects, instances, resources\n"
 
 static void send_cb(enum lwm2m_send_status status)
 {
-	LOG_INF("SEND status: %d\n", status);
+	LOG_INF("SEND status: %d", status);
 }
 
 static int cmd_send(const struct shell *sh, size_t argc, char **argv)
@@ -68,12 +72,12 @@ static int cmd_send(const struct shell *sh, size_t argc, char **argv)
 	struct lwm2m_obj_path lwm2m_path_list[CONFIG_LWM2M_COMPOSITE_PATH_LIST_SIZE];
 
 	if (!ctx) {
-		shell_error(sh, "no lwm2m context yet\n");
+		shell_error(sh, "no lwm2m context yet");
 		return -ENOEXEC;
 	}
 
 	if (argc < 2) {
-		shell_error(sh, "no path(s)\n");
+		shell_error(sh, "no path(s)");
 		shell_help(sh);
 		return -EINVAL;
 	}
@@ -94,7 +98,7 @@ static int cmd_send(const struct shell *sh, size_t argc, char **argv)
 	ret = lwm2m_send_cb(ctx, lwm2m_path_list, path_cnt, send_cb);
 
 	if (ret < 0) {
-		shell_error(sh, "can't do send operation, request failed (%d)\n", ret);
+		shell_error(sh, "can't do send operation, request failed (%d)", ret);
 		return -ENOEXEC;
 	}
 	return 0;
@@ -105,7 +109,7 @@ static int cmd_exec(const struct shell *sh, size_t argc, char **argv)
 	struct lwm2m_ctx *ctx = lwm2m_rd_client_ctx();
 
 	if (!ctx) {
-		shell_error(sh, "no lwm2m context yet\n");
+		shell_error(sh, "no lwm2m context yet");
 		return -ENOEXEC;
 	}
 
@@ -114,19 +118,19 @@ static int cmd_exec(const struct shell *sh, size_t argc, char **argv)
 	int ret = lwm2m_string_to_path(pathstr, &path, '/'); /* translate path -> path_obj */
 
 	if (ret < 0) {
-		shell_error(sh, "Illegal path (PATH %s)\n", pathstr);
+		shell_error(sh, "Illegal path (PATH %s)", pathstr);
 		return -EINVAL;
 	}
 
 	struct lwm2m_engine_res *res = lwm2m_engine_get_res(&path);
 
 	if (res == NULL) {
-		shell_error(sh, "Resource not found\n");
+		shell_error(sh, "Resource not found");
 		return -EINVAL;
 	}
 
 	if (!res->execute_cb) {
-		shell_error(sh, "No execute callback\n!");
+		shell_error(sh, "No execute callback!");
 		return -EINVAL;
 	}
 
@@ -136,7 +140,7 @@ static int cmd_exec(const struct shell *sh, size_t argc, char **argv)
 
 	ret = res->execute_cb(path.obj_inst_id, param, param_len);
 	if (ret < 0) {
-		shell_error(sh, "returned (err %d)\n", ret);
+		shell_error(sh, "returned (err %d)", ret);
 		return -ENOEXEC;
 	}
 
@@ -148,12 +152,12 @@ static int cmd_read(const struct shell *sh, size_t argc, char **argv)
 	struct lwm2m_ctx *ctx = lwm2m_rd_client_ctx();
 
 	if (!ctx) {
-		shell_error(sh, "no lwm2m context yet\n");
+		shell_error(sh, "no lwm2m context yet");
 		return -ENOEXEC;
 	}
 
 	if (argc < 2) {
-		shell_error(sh, "no arguments or path(s)\n");
+		shell_error(sh, "no arguments or path(s)");
 		shell_help(sh);
 		return -EINVAL;
 	}
@@ -180,6 +184,19 @@ static int cmd_read(const struct shell *sh, size_t argc, char **argv)
 			goto out;
 		}
 		shell_hexdump(sh, buff, buff_len);
+	} else if (strcmp(dtype, "-crc32") == 0) {
+		const char *buff;
+		uint16_t buff_len = 0;
+
+		ret = lwm2m_get_res_buf(&path, (void **)&buff,
+					NULL, &buff_len, NULL);
+		if (ret != 0) {
+			goto out;
+		}
+
+		uint32_t crc = crc32_ieee(buff, buff_len);
+
+		shell_print(sh, "%u", crc);
 	} else if (strcmp(dtype, "-s") == 0) {
 		const char *buff;
 		uint16_t buff_len = 0;
@@ -189,7 +206,7 @@ static int cmd_read(const struct shell *sh, size_t argc, char **argv)
 		if (ret != 0) {
 			goto out;
 		}
-		shell_print(sh, "%.*s\n", buff_len, buff);
+		shell_print(sh, "%.*s", buff_len, buff);
 	} else if (strcmp(dtype, "-s8") == 0) {
 		int8_t temp = 0;
 
@@ -197,7 +214,7 @@ static int cmd_read(const struct shell *sh, size_t argc, char **argv)
 		if (ret != 0) {
 			goto out;
 		}
-		shell_print(sh, "%d\n", temp);
+		shell_print(sh, "%d", temp);
 	} else if (strcmp(dtype, "-s16") == 0) {
 		int16_t temp = 0;
 
@@ -205,7 +222,7 @@ static int cmd_read(const struct shell *sh, size_t argc, char **argv)
 		if (ret != 0) {
 			goto out;
 		}
-		shell_print(sh, "%d\n", temp);
+		shell_print(sh, "%d", temp);
 	} else if (strcmp(dtype, "-s32") == 0) {
 		int32_t temp = 0;
 
@@ -213,7 +230,7 @@ static int cmd_read(const struct shell *sh, size_t argc, char **argv)
 		if (ret != 0) {
 			goto out;
 		}
-		shell_print(sh, "%d\n", temp);
+		shell_print(sh, "%d", temp);
 	} else if (strcmp(dtype, "-s64") == 0) {
 		int64_t temp = 0;
 
@@ -221,7 +238,7 @@ static int cmd_read(const struct shell *sh, size_t argc, char **argv)
 		if (ret != 0) {
 			goto out;
 		}
-		shell_print(sh, "%lld\n", temp);
+		shell_print(sh, "%lld", temp);
 	} else if (strcmp(dtype, "-u8") == 0) {
 		uint8_t temp = 0;
 
@@ -229,7 +246,7 @@ static int cmd_read(const struct shell *sh, size_t argc, char **argv)
 		if (ret != 0) {
 			goto out;
 		}
-		shell_print(sh, "%d\n", temp);
+		shell_print(sh, "%d", temp);
 	} else if (strcmp(dtype, "-u16") == 0) {
 		uint16_t temp = 0;
 
@@ -237,7 +254,7 @@ static int cmd_read(const struct shell *sh, size_t argc, char **argv)
 		if (ret != 0) {
 			goto out;
 		}
-		shell_print(sh, "%d\n", temp);
+		shell_print(sh, "%d", temp);
 	} else if (strcmp(dtype, "-u32") == 0) {
 		uint32_t temp = 0;
 
@@ -245,7 +262,7 @@ static int cmd_read(const struct shell *sh, size_t argc, char **argv)
 		if (ret != 0) {
 			goto out;
 		}
-		shell_print(sh, "%d\n", temp);
+		shell_print(sh, "%d", temp);
 	} else if (strcmp(dtype, "-f") == 0) {
 		double temp = 0;
 
@@ -253,7 +270,7 @@ static int cmd_read(const struct shell *sh, size_t argc, char **argv)
 		if (ret != 0) {
 			goto out;
 		}
-		shell_print(sh, "%f\n", temp);
+		shell_print(sh, "%f", temp);
 	} else if (strcmp(dtype, "-b") == 0) {
 		bool temp;
 
@@ -261,7 +278,7 @@ static int cmd_read(const struct shell *sh, size_t argc, char **argv)
 		if (ret != 0) {
 			goto out;
 		}
-		shell_print(sh, "%d\n", temp);
+		shell_print(sh, "%d", temp);
 	} else if (strcmp(dtype, "-t") == 0) {
 		time_t temp;
 
@@ -269,15 +286,15 @@ static int cmd_read(const struct shell *sh, size_t argc, char **argv)
 		if (ret != 0) {
 			goto out;
 		}
-		shell_print(sh, "%lld\n", temp);
+		shell_print(sh, "%lld", temp);
 	} else {
-		shell_error(sh, "can't recognize data type %s\n", dtype);
+		shell_error(sh, "can't recognize data type %s", dtype);
 		shell_help(sh);
 		return -EINVAL;
 	}
 	return 0;
 out:
-	shell_error(sh, "can't do read operation, request failed (err %d)\n", ret);
+	shell_error(sh, "can't do read operation, request failed (err %d)", ret);
 	return -EINVAL;
 }
 
@@ -286,12 +303,12 @@ static int cmd_write(const struct shell *sh, size_t argc, char **argv)
 	struct lwm2m_ctx *ctx = lwm2m_rd_client_ctx();
 
 	if (!ctx) {
-		shell_error(sh, "no lwm2m context yet\n");
+		shell_error(sh, "no lwm2m context yet");
 		return -ENOEXEC;
 	}
 
 	if (argc < 3) {
-		shell_error(sh, "no arguments or path(s)\n");
+		shell_error(sh, "no arguments or path(s)");
 		shell_help(sh);
 		return -EINVAL;
 	}
@@ -346,13 +363,13 @@ static int cmd_write(const struct shell *sh, size_t argc, char **argv)
 		} else if (strcmp(dtype, "-t") == 0) {
 			ret = lwm2m_set_time(&path, strtoll(value, &e, 10));
 		} else {
-			shell_error(sh, "can't recognize data type %s\n",
+			shell_error(sh, "can't recognize data type %s",
 				    dtype);
 			shell_help(sh);
 			return -EINVAL;
 		}
 		if (*e != '\0') {
-			shell_error(sh, "Invalid number: %s\n", value);
+			shell_error(sh, "Invalid number: %s", value);
 			shell_help(sh);
 			return -EINVAL;
 		}
@@ -361,7 +378,7 @@ static int cmd_write(const struct shell *sh, size_t argc, char **argv)
 	if (ret < 0) {
 		shell_error(
 			sh,
-			"can't do write operation, request failed (err %d)\n",
+			"can't do write operation, request failed (err %d)",
 			ret);
 		return -ENOEXEC;
 	}
@@ -375,14 +392,14 @@ static int cmd_create_or_delete(const struct shell *sh, bool delete, size_t argc
 	int ret;
 
 	if (argc < 2) {
-		shell_error(sh, "No object ID given\n");
+		shell_error(sh, "No object ID given");
 		shell_help(sh);
 		return -EINVAL;
 	}
 
 	ret = lwm2m_string_to_path(argv[1], &path, '/');
 	if (ret < 0) {
-		shell_error(sh, "failed to read path (%d)\n", ret);
+		shell_error(sh, "failed to read path (%d)", ret);
 		return -ENOEXEC;
 	}
 
@@ -411,7 +428,7 @@ static int cmd_create_or_delete(const struct shell *sh, bool delete, size_t argc
 	}
 
 	if (ret < 0) {
-		shell_error(sh, "operation failed, %d\n", ret);
+		shell_error(sh, "operation failed, %d", ret);
 		return -ENOEXEC;
 	}
 
@@ -433,18 +450,18 @@ static int cmd_start(const struct shell *sh, size_t argc, char **argv)
 	struct lwm2m_ctx *ctx = lwm2m_rd_client_ctx();
 
 	if (!ctx) {
-		shell_error(sh, "no lwm2m context yet\n");
+		shell_error(sh, "no lwm2m context yet");
 		return -ENOEXEC;
 	}
 	uint32_t bootstrap_flag = 0;
 
 	if (argc == 3) {
-		shell_error(sh, "no specifier or value\n");
+		shell_error(sh, "no specifier or value");
 		shell_help(sh);
 		return -EINVAL;
 	} else if (argc == 4) {
 		if (strcmp(argv[2], "-b") != 0) {
-			shell_error(sh, "unknown specifier %s\n", argv[2]);
+			shell_error(sh, "unknown specifier %s", argv[2]);
 			shell_help(sh);
 			return -EINVAL;
 		}
@@ -453,7 +470,7 @@ static int cmd_start(const struct shell *sh, size_t argc, char **argv)
 
 		bootstrap_flag = strtol(argv[3], &e, 10);
 		if (*e != '\0') {
-			shell_error(sh, "Invalid number: %s\n", argv[3]);
+			shell_error(sh, "Invalid number: %s", argv[3]);
 			shell_help(sh);
 			return -EINVAL;
 		}
@@ -463,7 +480,7 @@ static int cmd_start(const struct shell *sh, size_t argc, char **argv)
 	if (ret < 0) {
 		shell_error(
 			sh,
-			"can't do start operation, request failed (err %d)\n",
+			"can't do start operation, request failed (err %d)",
 			ret);
 		return -ENOEXEC;
 	}
@@ -475,14 +492,14 @@ static int cmd_stop(const struct shell *sh, size_t argc, char **argv)
 	struct lwm2m_ctx *ctx = lwm2m_rd_client_ctx();
 
 	if (!ctx) {
-		shell_error(sh, "no lwm2m context yet\n");
+		shell_error(sh, "no lwm2m context yet");
 		return -ENOEXEC;
 	}
 	bool forcefully = true;
 
 	if (argc == 2) {
 		if (strcmp(argv[1], "-f") != 0) {
-			shell_error(sh, "can't recognize specifier %s\n",
+			shell_error(sh, "can't recognize specifier %s",
 				    argv[1]);
 			shell_help(sh);
 			return -EINVAL;
@@ -494,7 +511,7 @@ static int cmd_stop(const struct shell *sh, size_t argc, char **argv)
 	if (ret < 0) {
 		shell_error(
 			sh,
-			"can't do stop operation, request failed (err %d)\n",
+			"can't do stop operation, request failed (err %d)",
 			ret);
 		return -ENOEXEC;
 	}
@@ -508,7 +525,7 @@ static int cmd_update(const struct shell *sh, size_t argc, char **argv)
 	struct lwm2m_ctx *ctx = lwm2m_rd_client_ctx();
 
 	if (!ctx) {
-		shell_error(sh, "no lwm2m context yet\n");
+		shell_error(sh, "no lwm2m context yet");
 		return -ENOEXEC;
 	}
 	lwm2m_rd_client_update();
@@ -562,7 +579,7 @@ static int cmd_cache(const struct shell *sh, size_t argc, char **argv)
 	struct lwm2m_obj_path obj_path;
 
 	if (argc != 3) {
-		shell_error(sh, "wrong parameters\n");
+		shell_error(sh, "wrong parameters");
 		return -EINVAL;
 	}
 
@@ -573,30 +590,30 @@ static int cmd_cache(const struct shell *sh, size_t argc, char **argv)
 	}
 
 	if (obj_path.level < 3) {
-		shell_error(sh, "Path string not correct\n");
+		shell_error(sh, "Path string not correct");
 		return -EINVAL;
 	}
 
 	if (lwm2m_cache_entry_get_by_object(&obj_path)) {
-		shell_error(sh, "Cache already enabled for %s\n", argv[1]);
+		shell_error(sh, "Cache already enabled for %s", argv[1]);
 		return -ENOEXEC;
 	}
 
 	elems = atoi(argv[2]);
 	if (elems < 1) {
-		shell_error(sh, "Size must be 1 or more (given %d)\n", elems);
+		shell_error(sh, "Size must be 1 or more (given %d)", elems);
 		return -EINVAL;
 	}
 
 	cache = k_malloc(sizeof(struct lwm2m_time_series_elem) * elems);
 	if (!cache) {
-		shell_error(sh, "Out of memory\n");
+		shell_error(sh, "Out of memory");
 		return -ENOEXEC;
 	}
 
 	rc = lwm2m_enable_cache(&obj_path, cache, elems);
 	if (rc) {
-		shell_error(sh, "lwm2m_enable_cache(%u/%u/%u/%u, %p, %d) returned %d\n",
+		shell_error(sh, "lwm2m_enable_cache(%u/%u/%u/%u, %p, %d) returned %d",
 			    obj_path.obj_id, obj_path.obj_inst_id, obj_path.res_id,
 			    obj_path.res_inst_id, cache, elems, rc);
 		k_free(cache);
@@ -605,9 +622,218 @@ static int cmd_cache(const struct shell *sh, size_t argc, char **argv)
 
 	return 0;
 #else
-	shell_error(sh, "No heap configured\n");
+	shell_error(sh, "No heap configured");
 	return -ENOEXEC;
 #endif
+}
+
+static void shell_print_attr(const struct shell *sh, void *ref)
+{
+	struct lwm2m_attr *attr = NULL;
+	bool found;
+
+	for (uint8_t type = 0; type < NR_LWM2M_ATTR; type++) {
+		found = false;
+		while ((attr = lwm2m_engine_get_next_attr(ref, attr)) != NULL) {
+			if (attr->type == type) {
+				found = true;
+				break;
+			}
+		}
+		if (found) {
+			switch (type) {
+			case LWM2M_ATTR_PMIN:
+				/* fall through */
+			case LWM2M_ATTR_PMAX:
+				shell_fprintf(sh, SHELL_NORMAL, "%10u", attr->int_val);
+				break;
+			case LWM2M_ATTR_GT:
+				/* fall through */
+			case LWM2M_ATTR_LT:
+				/* fall through */
+			case LWM2M_ATTR_STEP:
+				shell_fprintf(sh, SHELL_NORMAL, "%10f", attr->float_val);
+				break;
+			}
+		} else {
+			shell_fprintf(sh, SHELL_NORMAL, "%10s", "");
+		}
+	}
+}
+
+static int cmd_observations(const struct shell *sh, size_t argc, char **argv)
+{
+	char buf[LWM2M_MAX_PATH_STR_SIZE];
+	struct lwm2m_obj_path_list *o_p;
+	struct observe_node *obs;
+	uint32_t i = 0, path_i;
+	struct lwm2m_ctx *ctx;
+	void *ref;
+	int ret;
+
+	ctx = lwm2m_rd_client_ctx();
+	if (ctx == NULL) {
+		shell_error(sh, "no lwm2m context yet\n");
+		return -ENOEXEC;
+	}
+
+	ARG_UNUSED(argc);
+	ARG_UNUSED(argv);
+
+	shell_fprintf(sh, SHELL_INFO, " # %10s %18s", "composite", "path");
+	for (i = 0; i < NR_LWM2M_ATTR; i++) {
+		shell_fprintf(sh, SHELL_INFO, "%10s", lwm2m_attr_to_str(i));
+	}
+	shell_print(sh, "");
+
+	lwm2m_registry_lock();
+	i = 0;
+	SYS_SLIST_FOR_EACH_CONTAINER(&ctx->observer, obs, node) {
+		shell_fprintf(sh, SHELL_NORMAL, "%2u %10c ", i, obs->composite ? 'y' : 'n');
+		path_i = 0;
+		SYS_SLIST_FOR_EACH_CONTAINER(&obs->path_list, o_p, node) {
+			if (path_i > 0) {
+				shell_fprintf(sh, SHELL_NORMAL, "%14s", "");
+			}
+			shell_fprintf(sh, SHELL_NORMAL, "%-18s",
+				      lwm2m_path_log_buf(buf, &o_p->path));
+			ret = lwm2m_get_path_reference_ptr(NULL, &o_p->path, &ref);
+			if (ret < 0) {
+				continue;
+			}
+			shell_print_attr(sh, ref);
+			path_i++;
+			shell_print(sh, "");
+		}
+		i++;
+
+	}
+	lwm2m_registry_unlock();
+
+	return 0;
+}
+
+static int print_object_instance(const struct shell *sh, struct lwm2m_engine_obj_inst *oi)
+{
+	struct lwm2m_engine_obj *obj;
+
+	if (!oi) {
+		return -ENOEXEC;
+	}
+
+	obj = oi->obj;
+
+	for (int i = 0; i < oi->resource_count; i++) {
+		struct lwm2m_engine_res *re = &oi->resources[i];
+
+		for (int j = 0; j < re->res_inst_count; j++) {
+			struct lwm2m_engine_res_inst *ri = &re->res_instances[j];
+
+			if (ri->data_ptr && ri->data_len > 0 &&
+			    ri->res_inst_id != RES_INSTANCE_NOT_CREATED) {
+				struct lwm2m_engine_obj_field *field =
+					lwm2m_get_engine_obj_field(obj, re->res_id);
+				char path[LWM2M_MAX_PATH_STR_SIZE];
+
+				if (field == NULL) {
+					continue;
+				}
+
+				if (re->multi_res_inst) {
+					snprintf(path, sizeof(path), "%hu/%hu/%hu/%hu", obj->obj_id,
+						 oi->obj_inst_id, re->res_id, ri->res_inst_id);
+				} else {
+					snprintf(path, sizeof(path), "%hu/%hu/%hu", obj->obj_id,
+						 oi->obj_inst_id, re->res_id);
+				}
+				switch (field->data_type) {
+				case LWM2M_RES_TYPE_STRING:
+					shell_print(sh, "%s : %s", path, (char *)ri->data_ptr);
+					break;
+				case LWM2M_RES_TYPE_U8:
+				case LWM2M_RES_TYPE_S8:
+				case LWM2M_RES_TYPE_BOOL:
+					shell_print(sh, "%s : %u", path, *(uint8_t *)ri->data_ptr);
+					break;
+				case LWM2M_RES_TYPE_U16:
+				case LWM2M_RES_TYPE_S16:
+					shell_print(sh, "%s : %u", path, *(uint16_t *)ri->data_ptr);
+					break;
+				case LWM2M_RES_TYPE_U32:
+				case LWM2M_RES_TYPE_S32:
+					shell_print(sh, "%s : %u", path, *(uint32_t *)ri->data_ptr);
+					break;
+				case LWM2M_RES_TYPE_S64:
+				case LWM2M_RES_TYPE_TIME:
+					shell_print(sh, "%s : %lld", path,
+						    *(int64_t *)ri->data_ptr);
+					break;
+				case LWM2M_RES_TYPE_FLOAT:
+					shell_print(sh, "%s : %lf", path, *(double *)ri->data_ptr);
+					break;
+				case LWM2M_RES_TYPE_OPAQUE:
+					shell_print(sh, "%s : OPAQUE(%hu/%hu)", path, ri->data_len,
+						    ri->max_data_len);
+					break;
+				}
+			}
+		}
+	}
+	return 0;
+}
+
+static int print_object(const struct shell *sh, struct lwm2m_engine_obj *obj)
+{
+	if (!obj) {
+		return -ENOEXEC;
+	}
+	struct lwm2m_engine_obj_inst *oi = next_engine_obj_inst(obj->obj_id, -1);
+
+	for (int i = 0; i < obj->instance_count; i++) {
+		print_object_instance(sh, oi);
+		oi = next_engine_obj_inst(obj->obj_id, oi->obj_inst_id);
+	}
+	return 0;
+}
+
+static int print_all_objs(const struct shell *sh)
+{
+	struct lwm2m_engine_obj *obj;
+
+	SYS_SLIST_FOR_EACH_CONTAINER(lwm2m_engine_obj_list(), obj, node) {
+		print_object(sh, obj);
+	}
+	return 0;
+}
+
+static int cmd_ls(const struct shell *sh, size_t argc, char **argv)
+{
+	struct lwm2m_obj_path path;
+	int ret;
+
+	if (argc < 2) {
+		return print_all_objs(sh);
+	}
+
+	ret = lwm2m_string_to_path(argv[1], &path, '/');
+	if (ret < 0) {
+		return -ENOEXEC;
+	}
+
+	if (path.level == LWM2M_PATH_LEVEL_NONE) {
+		return print_all_objs(sh);
+	} else if (path.level == LWM2M_PATH_LEVEL_OBJECT) {
+		struct lwm2m_engine_obj *obj = lwm2m_engine_get_obj(&path);
+
+		return print_object(sh, obj);
+	} else if (path.level == LWM2M_PATH_LEVEL_OBJECT_INST) {
+		struct lwm2m_engine_obj_inst *oi = lwm2m_engine_get_obj_inst(&path);
+
+		return print_object_instance(sh, oi);
+	} else if (path.level == LWM2M_PATH_LEVEL_RESOURCE) {
+		return cmd_read(sh, argc, argv);
+	}
+	return -ENOEXEC;
 }
 
 SHELL_STATIC_SUBCMD_SET_CREATE(
@@ -627,7 +853,8 @@ SHELL_STATIC_SUBCMD_SET_CREATE(
 	SHELL_CMD_ARG(resume, NULL, LWM2M_HELP_RESUME, cmd_resume, 1, 0),
 	SHELL_CMD_ARG(lock, NULL, LWM2M_HELP_LOCK, cmd_lock, 1, 0),
 	SHELL_CMD_ARG(unlock, NULL, LWM2M_HELP_UNLOCK, cmd_unlock, 1, 0),
-
+	SHELL_CMD_ARG(obs, NULL, LWM2M_HELP_OBSERV, cmd_observations, 1, 0),
+	SHELL_CMD_ARG(ls, NULL, LWM2M_HELP_LS, cmd_ls, 1, 1),
 	SHELL_SUBCMD_SET_END);
 SHELL_COND_CMD_ARG_REGISTER(CONFIG_LWM2M_SHELL, lwm2m, &sub_lwm2m,
 			    LWM2M_HELP_CMD, NULL, 1, 0);

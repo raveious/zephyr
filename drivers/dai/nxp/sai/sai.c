@@ -7,6 +7,8 @@
 #include <zephyr/drivers/dai.h>
 #include <zephyr/device.h>
 #include <zephyr/kernel.h>
+#include <zephyr/pm/device_runtime.h>
+#include <zephyr/pm/device.h>
 
 #include "sai.h"
 
@@ -95,20 +97,14 @@ void sai_isr(const void *parameter)
 
 	/* check for TX FIFO error */
 	if (SAI_TX_RX_STATUS_IS_SET(DAI_DIR_TX, data->regmap, kSAI_FIFOErrorFlag)) {
-		LOG_ERR("FIFO underrun detected");
-		/* TODO: this will crash the program and should be addressed as
-		 * mentioned in TODO list's 2).
-		 */
-		z_irq_spurious(NULL);
+		LOG_WRN("FIFO underrun detected");
+		SAI_TX_RX_STATUS_CLEAR(DAI_DIR_TX, data->regmap, kSAI_FIFOErrorFlag);
 	}
 
 	/* check for RX FIFO error */
 	if (SAI_TX_RX_STATUS_IS_SET(DAI_DIR_RX, data->regmap, kSAI_FIFOErrorFlag)) {
-		LOG_ERR("FIFO overrun detected");
-		/* TODO: this will crash the program and should be addressed as
-		 * mentioned in TODO list's 2).
-		 */
-		z_irq_spurious(NULL);
+		LOG_WRN("FIFO overrun detected");
+		SAI_TX_RX_STATUS_CLEAR(DAI_DIR_RX, data->regmap, kSAI_FIFOErrorFlag);
 	}
 }
 
@@ -141,6 +137,73 @@ static const struct dai_properties
 
 	CODE_UNREACHABLE;
 }
+
+#ifdef CONFIG_SAI_IMX93_ERRATA_051421
+/* notes:
+ *	1) TX and RX operate in the same mode: master/slave. As such,
+ *	there's no need to check the mode for both directions.
+ *
+ *	2) Only one of the directions can operate in SYNC mode at a
+ *	time.
+ *
+ *	3) What this piece of code does is it makes the SYNC direction
+ *	use the ASYNC direction's BCLK that comes from its input pad.
+ *	Logically speaking, this would look like:
+ *
+ *                      +--------+     +--------+
+ *                      |   TX   |     |   RX   |
+ *                      | module |     | module |
+ *                      +--------+     +--------+
+ *                         |   ^            |
+ *                         |   |            |
+ *                 TX_BCLK |   |____________| RX_BCLK
+ *                         |                |
+ *                         V                V
+ *                     +---------+    +---------+
+ *                     | TX BCLK |    | RX BCLK |
+ *                     |   pad   |    |   pad   |
+ *                     +---------+    +---------+
+ *                          |              |
+ *                          | TX_BCLK      | RX_BCLK
+ *                          V              V
+ *
+ *	Without BCI enabled, the TX module would use an RX_BCLK
+ *	that's divided instead of the one that's obtained from
+ *	bypassing the MCLK (i.e: TX_BCLK would have the value of
+ *	MCLK / ((RX_DIV + 1) * 2)). If BCI is 1, then TX_BCLK will
+ *	be the same as the RX_BCLK that's obtained from bypassing
+ *	the MCLK on RX's side.
+ *
+ *	4) The check for BCLK == MCLK is there to see if the ASYNC
+ *	direction will have the BYP bit toggled.
+ *
+ *	IMPORTANT1: in the above diagram and information, RX is SYNC
+ *	with TX. The same applies if RX is SYNC with TX. Also, this
+ *	applies to i.MX93. For other SoCs, things may be different
+ *	so use this information with caution.
+ *
+ *	IMPORTANT2: for this to work, you also need to enable the
+ *	pad's input path. For i.MX93, this can be achieved by setting
+ *	the pad's SION bit.
+ */
+static void sai_config_set_err_051421(I2S_Type *base,
+				      const struct sai_config *cfg,
+				      const struct sai_bespoke_config *bespoke,
+				      sai_transceiver_t *rx_config,
+				      sai_transceiver_t *tx_config)
+{
+	if (tx_config->masterSlave == kSAI_Master &&
+	    bespoke->mclk_rate == bespoke->bclk_rate) {
+		if (cfg->tx_sync_mode == kSAI_ModeSync) {
+			base->TCR2 |= I2S_TCR2_BCI(1);
+		}
+
+		if (cfg->rx_sync_mode == kSAI_ModeSync) {
+			base->RCR2 |= I2S_RCR2_BCI(1);
+		}
+	}
+}
+#endif /* CONFIG_SAI_IMX93_ERRATA_051421 */
 
 static int sai_config_set(const struct device *dev,
 			  const struct dai_config *cfg,
@@ -308,11 +371,15 @@ static int sai_config_set(const struct device *dev,
 	LOG_DBG("RX watermark: %d", sai_cfg->rx_fifo_watermark);
 	LOG_DBG("TX watermark: %d", sai_cfg->tx_fifo_watermark);
 
-	/* TODO: for now, the only supported operation mode is RX sync with TX.
-	 * Is there a need to support other modes?
-	 */
-	tx_config->syncMode = kSAI_ModeAsync;
-	rx_config->syncMode = kSAI_ModeSync;
+	/* set the synchronization mode based on data passed from the DTS */
+	tx_config->syncMode = sai_cfg->tx_sync_mode;
+	rx_config->syncMode = sai_cfg->rx_sync_mode;
+
+	ret = pm_device_runtime_get(dev);
+	if (ret < 0) {
+		LOG_ERR("failed to get() SAI device: %d", ret);
+		return ret;
+	}
 
 	/* commit configuration */
 	SAI_RxSetConfig(UINT_TO_I2S(data->regmap), rx_config);
@@ -339,9 +406,16 @@ static int sai_config_set(const struct device *dev,
 	ret = sai_mclk_config(dev, tx_config->bitClock.bclkSource, bespoke);
 	if (ret < 0) {
 		LOG_ERR("failed to set MCLK configuration");
+		pm_device_runtime_put(dev);
 		return ret;
 	}
 #endif /* CONFIG_SAI_HAS_MCLK_CONFIG_OPTION */
+
+#ifdef CONFIG_SAI_IMX93_ERRATA_051421
+	sai_config_set_err_051421(UINT_TO_I2S(data->regmap),
+				  sai_cfg, bespoke,
+				  rx_config, tx_config);
+#endif /* CONFIG_SAI_IMX93_ERRATA_051421 */
 
 	/* this is needed so that rates different from FSYNC_RATE
 	 * will not be allowed.
@@ -367,7 +441,7 @@ static int sai_config_set(const struct device *dev,
 
 	sai_dump_register_data(data->regmap);
 
-	return 0;
+	return pm_device_runtime_put(dev);
 }
 
 /* SOF note: please be very careful with this function as it does
@@ -383,8 +457,33 @@ static int sai_config_set(const struct device *dev,
  * rid of the busy waiting, the STOP operation may have to be split into
  * 2 operations: TRIG_STOP and TRIG_POST_STOP.
  */
-static int sai_tx_rx_disable(struct sai_data *data, enum dai_dir dir)
+static bool sai_dir_disable(struct sai_data *data, enum dai_dir dir)
 {
+	/* VERY IMPORTANT: DO NOT use SAI_TxEnable/SAI_RxEnable
+	 * here as they do not disable the ASYNC direction.
+	 * Since the software logic assures that the ASYNC direction
+	 * is not disabled before the SYNC direction, we can force
+	 * the disablement of the given direction.
+	 */
+	sai_tx_rx_force_disable(dir, data->regmap);
+
+	/* please note the difference between the transmitter/receiver's
+	 * hardware states and their software states. The software
+	 * states can be obtained by reading data->tx/rx_enabled, while
+	 * the hardware states can be obtained by reading TCSR/RCSR. The
+	 * hardware state can actually differ from the software state.
+	 * Here, we're interested in reading the hardware state which
+	 * indicates if the transmitter/receiver was actually disabled
+	 * or not.
+	 */
+	return WAIT_FOR(!SAI_TX_RX_IS_HW_ENABLED(dir, data->regmap),
+			SAI_TX_RX_HW_DISABLE_TIMEOUT, k_busy_wait(1));
+}
+
+static int sai_tx_rx_disable(struct sai_data *data,
+			     const struct sai_config *cfg, enum dai_dir dir)
+{
+	enum dai_dir sync_dir, async_dir;
 	bool ret;
 
 	/* sai_disable() should never be called from ISR context
@@ -395,44 +494,42 @@ static int sai_tx_rx_disable(struct sai_data *data, enum dai_dir dir)
 		return -EINVAL;
 	}
 
-	if ((dir == DAI_DIR_TX && !data->rx_enabled) || dir == DAI_DIR_RX) {
-		/* VERY IMPORTANT: DO NOT use SAI_TxEnable/SAI_RxEnable
-		 * here as they do not disable the ASYNC direction.
-		 * Since the software logic assures that the ASYNC direction
-		 * is not disabled before the SYNC direction, we can force
-		 * the disablement of the given direction.
-		 */
-		sai_tx_rx_force_disable(dir, data->regmap);
-
-		/* please note the difference between the transmitter/receiver's
-		 * hardware states and their software states. The software
-		 * states can be obtained by reading data->tx/rx_enabled, while
-		 * the hardware states can be obtained by reading TCSR/RCSR. The
-		 * hadrware state can actually differ from the software state.
-		 * Here, we're interested in reading the hardware state which
-		 * indicates if the transmitter/receiver was actually disabled
-		 * or not.
-		 */
-		ret = WAIT_FOR(!SAI_TX_RX_IS_HW_ENABLED(dir, data->regmap),
-			       SAI_TX_RX_HW_DISABLE_TIMEOUT, k_busy_wait(1));
+	if (cfg->tx_sync_mode == kSAI_ModeAsync &&
+	    cfg->rx_sync_mode == kSAI_ModeAsync) {
+		ret = sai_dir_disable(data, dir);
 		if (!ret) {
 			LOG_ERR("timed out while waiting for dir %d disable", dir);
 			return -ETIMEDOUT;
 		}
-	}
+	} else {
+		sync_dir = SAI_TX_RX_GET_SYNC_DIR(cfg);
+		async_dir = SAI_TX_RX_GET_ASYNC_DIR(cfg);
 
-	/* if TX wasn't explicitly enabled (via sai_trigger_start(TX))
-	 * then that means it was enabled by a sai_trigger_start(RX). As
-	 * such, data->tx_enabled will be false.
-	 */
-	if (dir == DAI_DIR_RX && !data->tx_enabled) {
-		sai_tx_rx_force_disable(DAI_DIR_TX, data->regmap);
+		if (dir == sync_dir) {
+			ret = sai_dir_disable(data, sync_dir);
+			if (!ret) {
+				LOG_ERR("timed out while waiting for dir %d disable",
+					sync_dir);
+				return -ETIMEDOUT;
+			}
 
-		ret = WAIT_FOR(!SAI_TX_RX_IS_HW_ENABLED(DAI_DIR_TX, data->regmap),
-			       SAI_TX_RX_HW_DISABLE_TIMEOUT, k_busy_wait(1));
-		if (!ret) {
-			LOG_ERR("timed out while waiting for dir TX disable");
-			return -ETIMEDOUT;
+			if (!SAI_TX_RX_DIR_IS_SW_ENABLED(async_dir, data)) {
+				ret = sai_dir_disable(data, async_dir);
+				if (!ret) {
+					LOG_ERR("timed out while waiting for dir %d disable",
+						async_dir);
+					return -ETIMEDOUT;
+				}
+			}
+		} else {
+			if (!SAI_TX_RX_DIR_IS_SW_ENABLED(sync_dir, data)) {
+				ret = sai_dir_disable(data, async_dir);
+				if (!ret) {
+					LOG_ERR("timed out while waiting for dir %d disable",
+						async_dir);
+					return -ETIMEDOUT;
+				}
+			}
 		}
 	}
 
@@ -443,9 +540,11 @@ static int sai_trigger_pause(const struct device *dev,
 			     enum dai_dir dir)
 {
 	struct sai_data *data;
+	const struct sai_config *cfg;
 	int ret;
 
 	data = dev->data;
+	cfg = dev->config;
 
 	if (dir != DAI_DIR_RX && dir != DAI_DIR_TX) {
 		LOG_ERR("invalid direction: %d", dir);
@@ -462,10 +561,13 @@ static int sai_trigger_pause(const struct device *dev,
 
 	LOG_DBG("pause on direction %d", dir);
 
-	ret = sai_tx_rx_disable(data, dir);
+	ret = sai_tx_rx_disable(data, cfg, dir);
 	if (ret < 0) {
 		return ret;
 	}
+
+	/* disable TX/RX data line */
+	sai_tx_rx_set_dline_mask(dir, data->regmap, 0x0);
 
 	/* update the software state of TX/RX */
 	sai_tx_rx_sw_enable_disable(dir, data, false);
@@ -477,10 +579,12 @@ static int sai_trigger_stop(const struct device *dev,
 			    enum dai_dir dir)
 {
 	struct sai_data *data;
+	const struct sai_config *cfg;
 	int ret;
 	uint32_t old_state;
 
 	data = dev->data;
+	cfg = dev->config;
 	old_state = sai_get_state(dir, data);
 
 	if (dir != DAI_DIR_RX && dir != DAI_DIR_TX) {
@@ -503,10 +607,10 @@ static int sai_trigger_stop(const struct device *dev,
 		 * left to do is disable the DMA requests and
 		 * the data line.
 		 */
-		goto out_dline_disable;
+		goto out_dmareq_disable;
 	}
 
-	ret = sai_tx_rx_disable(data, dir);
+	ret = sai_tx_rx_disable(data, cfg, dir);
 	if (ret < 0) {
 		return ret;
 	}
@@ -514,10 +618,10 @@ static int sai_trigger_stop(const struct device *dev,
 	/* update the software state of TX/RX */
 	sai_tx_rx_sw_enable_disable(dir, data, false);
 
-out_dline_disable:
 	/* disable TX/RX data line */
 	sai_tx_rx_set_dline_mask(dir, data->regmap, 0x0);
 
+out_dmareq_disable:
 	/* disable DMA requests */
 	SAI_TX_RX_DMA_ENABLE_DISABLE(dir, data->regmap, false);
 
@@ -525,17 +629,82 @@ out_dline_disable:
 	SAI_TX_RX_ENABLE_DISABLE_IRQ(dir, data->regmap,
 				     kSAI_FIFOErrorInterruptEnable, false);
 
-	return 0;
+	irq_disable(cfg->irq);
+
+	return pm_device_runtime_put(dev);
+}
+
+/* notes:
+ *	1) The "rx_sync_mode" and "tx_sync_mode" properties force the user to pick from
+ *	SYNC and ASYNC for each direction. As such, there are 4 possible combinations
+ *	that need to be covered here:
+ *		a) TX ASYNC, RX ASYNC
+ *		b) TX SYNC, RX ASYNC
+ *		c) TX ASYNC, RX SYNC
+ *		d) TX SYNC, RX SYNC
+ *
+ *	Combination d) is not valid and is covered by a BUILD_ASSERT(). As such, there are 3 valid
+ *	combinations that need to be supported. Since the main branch of the IF statement covers
+ *	combination a), there's only combinations b) and c) to be covered here.
+ *
+ *	2) We can distinguish between 3 types of directions:
+ *		a) The target direction. This is the direction on which we want to perform the
+ *		software reset.
+ *		b) The SYNC direction. This is, well, the direction that's in SYNC with the other
+ *		direction.
+ *		c) The ASYNC direction.
+ *
+ *	Of course, the target direction may differ from the SYNC or ASYNC directions, but it
+ *	can't differ from both of them at the same time (i.e: TARGET != SYNC AND TARGET != ASYNC).
+ *
+ *	If the target direction is the same as the SYNC direction then we can safely perform the
+ *	software reset on the target direction as there's nothing depending on it. We also want
+ *	to do a software reset on the ASYNC direction. We can only do this if the ASYNC direction
+ *	wasn't software enabled (i.e: through an explicit trigger_start() call).
+ *
+ *	If the target direction is the same as the ASYNC direction then we can only perform a
+ *	software reset on it only if the SYNC direction wasn't software enabled (i.e: through an
+ *	explicit trigger_start() call).
+ */
+static void sai_tx_rx_sw_reset(struct sai_data *data,
+			       const struct sai_config *cfg, enum dai_dir dir)
+{
+	enum dai_dir sync_dir, async_dir;
+
+	if (cfg->tx_sync_mode == kSAI_ModeAsync &&
+	    cfg->rx_sync_mode == kSAI_ModeAsync) {
+		/* both directions are ASYNC w.r.t each other. As such, do
+		 * software reset only on the targeted direction.
+		 */
+		SAI_TX_RX_SW_RESET(dir, data->regmap);
+	} else {
+		sync_dir = SAI_TX_RX_GET_SYNC_DIR(cfg);
+		async_dir = SAI_TX_RX_GET_ASYNC_DIR(cfg);
+
+		if (dir == sync_dir) {
+			SAI_TX_RX_SW_RESET(sync_dir, data->regmap);
+
+			if (!SAI_TX_RX_DIR_IS_SW_ENABLED(async_dir, data)) {
+				SAI_TX_RX_SW_RESET(async_dir, data->regmap);
+			}
+		} else {
+			if (!SAI_TX_RX_DIR_IS_SW_ENABLED(sync_dir, data)) {
+				SAI_TX_RX_SW_RESET(async_dir, data->regmap);
+			}
+		}
+	}
 }
 
 static int sai_trigger_start(const struct device *dev,
 			     enum dai_dir dir)
 {
 	struct sai_data *data;
+	const struct sai_config *cfg;
 	uint32_t old_state;
-	int ret;
+	int ret, i;
 
 	data = dev->data;
+	cfg = dev->config;
 	old_state = sai_get_state(dir, data);
 
 	/* TX and RX should be triggered independently */
@@ -558,47 +727,44 @@ static int sai_trigger_start(const struct device *dev,
 		 * skip this part and go directly to the TX/RX
 		 * enablement.
 		 */
-		goto out_enable_tx_rx;
+		goto out_enable_dline;
 	}
 
 	LOG_DBG("start on direction %d", dir);
 
-	if (dir == DAI_DIR_RX) {
-		/* this is fine because TX is async so it won't be
-		 * affected by an RX software reset.
-		 */
-		SAI_TX_RX_SW_RESET(dir, data->regmap);
-
-		/* do a TX software reset only if not already enabled */
-		if (!data->tx_enabled) {
-			SAI_TX_RX_SW_RESET(DAI_DIR_TX, data->regmap);
-		}
-	} else {
-		/* a software reset should be issued for TX
-		 * only if RX was not already enabled.
-		 */
-		if (!data->rx_enabled) {
-			SAI_TX_RX_SW_RESET(dir, data->regmap);
-		}
+	ret = pm_device_runtime_get(dev);
+	if (ret < 0) {
+		LOG_ERR("failed to get() SAI device: %d", ret);
+		return ret;
 	}
+
+	sai_tx_rx_sw_reset(data, cfg, dir);
+
+	irq_enable(cfg->irq);
 
 	/* enable error interrupt */
 	SAI_TX_RX_ENABLE_DISABLE_IRQ(dir, data->regmap,
 				     kSAI_FIFOErrorInterruptEnable, true);
 
-	/* TODO: is there a need to write some words to the FIFO to avoid starvation? */
+	/* avoid initial underrun by writing a frame's worth of 0s */
+	if (dir == DAI_DIR_TX) {
+		for (i = 0; i < data->cfg.channels; i++) {
+			SAI_WriteData(UINT_TO_I2S(data->regmap), cfg->tx_dline, 0x0);
+		}
+	}
 
 	/* TODO: for now, only DMA mode is supported */
 	SAI_TX_RX_DMA_ENABLE_DISABLE(dir, data->regmap, true);
 
+out_enable_dline:
 	/* enable TX/RX data line. This translates to TX_DLINE0/RX_DLINE0
 	 * being enabled.
 	 *
 	 * TODO: for now we only support 1 data line per direction.
 	 */
-	sai_tx_rx_set_dline_mask(dir, data->regmap, 0x1);
+	sai_tx_rx_set_dline_mask(dir, data->regmap,
+				 SAI_TX_RX_DLINE_MASK(dir, cfg));
 
-out_enable_tx_rx:
 	/* this will also enable the async side */
 	SAI_TX_RX_ENABLE_DISABLE(dir, data->regmap, true);
 
@@ -652,7 +818,7 @@ static int sai_remove(const struct device *dev)
 	return 0;
 }
 
-static const struct dai_driver_api sai_api = {
+static DEVICE_API(dai, sai_api) = {
 	.config_set = sai_config_set,
 	.config_get = sai_config_get,
 	.trigger = sai_trigger,
@@ -661,39 +827,93 @@ static const struct dai_driver_api sai_api = {
 	.remove = sai_remove,
 };
 
+static int sai_clks_enable_disable(const struct device *dev, bool enable)
+{
+	int i, ret;
+	const struct sai_config *cfg;
+	void *clk_id;
+
+	cfg = dev->config;
+
+	for (i = 0; i < cfg->clk_data.clock_num; i++) {
+		clk_id = UINT_TO_POINTER(cfg->clk_data.clocks[i]);
+
+		if (enable) {
+			ret = clock_control_on(cfg->clk_data.dev, clk_id);
+		} else {
+			ret = clock_control_off(cfg->clk_data.dev, clk_id);
+		}
+
+		if (ret < 0) {
+			LOG_ERR("failed to gate/ungate clock %u: %d",
+				cfg->clk_data.clocks[i], ret);
+			return ret;
+		}
+	}
+
+	return 0;
+}
+
+__maybe_unused static int sai_pm_action(const struct device *dev,
+					enum pm_device_action action)
+{
+	bool enable = true;
+
+	switch (action) {
+	case PM_DEVICE_ACTION_RESUME:
+		break;
+	case PM_DEVICE_ACTION_SUSPEND:
+		enable = false;
+		break;
+	case PM_DEVICE_ACTION_TURN_ON:
+	case PM_DEVICE_ACTION_TURN_OFF:
+		return 0;
+	default:
+		return -ENOTSUP;
+	}
+
+	return sai_clks_enable_disable(dev, enable);
+}
+
 static int sai_init(const struct device *dev)
 {
 	const struct sai_config *cfg;
 	struct sai_data *data;
-	int i, ret;
+	int ret;
 
 	cfg = dev->config;
 	data = dev->data;
 
 	device_map(&data->regmap, cfg->regmap_phys, cfg->regmap_size, K_MEM_CACHE_NONE);
 
-	/* enable clocks if any */
-	for (i = 0; i < cfg->clk_data.clock_num; i++) {
-		ret = clock_control_on(cfg->clk_data.dev,
-				       UINT_TO_POINTER(cfg->clk_data.clocks[i]));
-		if (ret < 0) {
-			return ret;
-		}
+#ifndef CONFIG_PM_DEVICE_RUNTIME
+	ret = sai_clks_enable_disable(dev, true);
+	if (ret < 0) {
+		return ret;
+	}
+#endif /* CONFIG_PM_DEVICE_RUNTIME */
 
-		LOG_DBG("clock %s has been ungated", cfg->clk_data.clock_names[i]);
+	/* note: optional operation so -ENOENT is allowed (i.e: we
+	 * allow the default state to not be defined)
+	 */
+	ret = pinctrl_apply_state(cfg->pincfg, PINCTRL_STATE_DEFAULT);
+	if (ret < 0 && ret != -ENOENT) {
+		return ret;
 	}
 
 	/* set TX/RX default states */
 	data->tx_state = DAI_STATE_NOT_READY;
 	data->rx_state = DAI_STATE_NOT_READY;
 
-	/* register ISR and enable IRQ */
+	/* register ISR */
 	cfg->irq_config();
 
-	return 0;
+	return pm_device_runtime_enable(dev);
 }
 
 #define SAI_INIT(inst)								\
+										\
+PINCTRL_DT_INST_DEFINE(inst);							\
 										\
 BUILD_ASSERT(SAI_FIFO_DEPTH(inst) > 0 &&					\
 	     SAI_FIFO_DEPTH(inst) <= _SAI_FIFO_DEPTH(inst),			\
@@ -711,16 +931,31 @@ BUILD_ASSERT(IS_ENABLED(CONFIG_SAI_HAS_MCLK_CONFIG_OPTION) ||			\
 	     !DT_INST_PROP(inst, mclk_is_output),				\
 	     "SAI doesn't support MCLK config but mclk_is_output is specified");\
 										\
+BUILD_ASSERT(SAI_TX_SYNC_MODE(inst) != SAI_RX_SYNC_MODE(inst) ||		\
+	     SAI_TX_SYNC_MODE(inst) != kSAI_ModeSync,				\
+	     "transmitter and receiver can't be both SYNC with each other");	\
+										\
+BUILD_ASSERT(SAI_DLINE_COUNT(inst) != -1,					\
+	     "bad or unsupported SAI instance. Is the base address correct?");	\
+										\
+BUILD_ASSERT(SAI_TX_DLINE_INDEX(inst) >= 0 &&					\
+	     (SAI_TX_DLINE_INDEX(inst) < SAI_DLINE_COUNT(inst)),		\
+	     "invalid TX data line index");					\
+										\
+BUILD_ASSERT(SAI_RX_DLINE_INDEX(inst) >= 0 &&					\
+	     (SAI_RX_DLINE_INDEX(inst) < SAI_DLINE_COUNT(inst)),		\
+	     "invalid RX data line index");					\
+										\
 static const struct dai_properties sai_tx_props_##inst = {			\
-	.fifo_address = SAI_TX_FIFO_BASE(inst),					\
+	.fifo_address = SAI_TX_FIFO_BASE(inst, SAI_TX_DLINE_INDEX(inst)),	\
 	.fifo_depth = SAI_FIFO_DEPTH(inst) * CONFIG_SAI_FIFO_WORD_SIZE,		\
-	.dma_hs_id = SAI_TX_DMA_MUX(inst),					\
+	.dma_hs_id = SAI_TX_RX_DMA_HANDSHAKE(inst, tx),				\
 };										\
 										\
 static const struct dai_properties sai_rx_props_##inst = {			\
-	.fifo_address = SAI_RX_FIFO_BASE(inst),					\
+	.fifo_address = SAI_RX_FIFO_BASE(inst, SAI_RX_DLINE_INDEX(inst)),	\
 	.fifo_depth = SAI_FIFO_DEPTH(inst) * CONFIG_SAI_FIFO_WORD_SIZE,		\
-	.dma_hs_id = SAI_RX_DMA_MUX(inst),					\
+	.dma_hs_id = SAI_TX_RX_DMA_HANDSHAKE(inst, rx),				\
 };										\
 										\
 void irq_config_##inst(void)							\
@@ -730,19 +965,24 @@ void irq_config_##inst(void)							\
 		    sai_isr,							\
 		    DEVICE_DT_INST_GET(inst),					\
 		    0);								\
-	irq_enable(DT_INST_IRQN(inst));						\
 }										\
 										\
 static struct sai_config sai_config_##inst = {					\
 	.regmap_phys = DT_INST_REG_ADDR(inst),					\
 	.regmap_size = DT_INST_REG_SIZE(inst),					\
+	.irq = DT_INST_IRQN(inst),						\
 	.clk_data = SAI_CLOCK_DATA_DECLARE(inst),				\
 	.rx_fifo_watermark = SAI_RX_FIFO_WATERMARK(inst),			\
 	.tx_fifo_watermark = SAI_TX_FIFO_WATERMARK(inst),			\
-	.mclk_is_output = DT_INST_PROP_OR(inst, mclk_is_output, false),		\
+	.mclk_is_output = DT_INST_PROP(inst, mclk_is_output),			\
 	.tx_props = &sai_tx_props_##inst,					\
 	.rx_props = &sai_rx_props_##inst,					\
 	.irq_config = irq_config_##inst,					\
+	.tx_sync_mode = SAI_TX_SYNC_MODE(inst),					\
+	.rx_sync_mode = SAI_RX_SYNC_MODE(inst),					\
+	.tx_dline = SAI_TX_DLINE_INDEX(inst),					\
+	.rx_dline = SAI_RX_DLINE_INDEX(inst),					\
+	.pincfg = PINCTRL_DT_INST_DEV_CONFIG_GET(inst),				\
 };										\
 										\
 static struct sai_data sai_data_##inst = {					\
@@ -750,7 +990,9 @@ static struct sai_data sai_data_##inst = {					\
 	.cfg.dai_index = DT_INST_PROP_OR(inst, dai_index, 0),			\
 };										\
 										\
-DEVICE_DT_INST_DEFINE(inst, &sai_init, NULL,					\
+PM_DEVICE_DT_INST_DEFINE(inst, sai_pm_action);					\
+										\
+DEVICE_DT_INST_DEFINE(inst, &sai_init, PM_DEVICE_DT_INST_GET(inst),		\
 		      &sai_data_##inst, &sai_config_##inst,			\
 		      POST_KERNEL, CONFIG_DAI_INIT_PRIORITY,			\
 		      &sai_api);						\

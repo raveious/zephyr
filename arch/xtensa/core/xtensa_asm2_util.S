@@ -4,8 +4,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 #include <xtensa_asm2_s.h>
-#include <offsets.h>
-#include <zsr.h>
+#include <zephyr/offsets.h>
+#include <zephyr/zsr.h>
 
 #if defined(CONFIG_SIMULATOR_XTENSA) || defined(XT_SIMULATOR)
 #include <xtensa/simcall.h>
@@ -153,32 +153,45 @@ _restore_context:
 
 	l32i a0, a1, ___xtensa_irq_bsa_t_pc_OFFSET
 	wsr a0, ZSR_EPC
+
+#ifdef CONFIG_USERSPACE
+	/* When restoring context via xtensa_switch and
+	 * returning from non-nested interrupts, we use
+	 * the stashed PS value in the thread struct
+	 * instead of the one in the thread stack.
+	 * Both scenarios will have nested value of 0.
+	 */
+	rsr.ZSR_CPU a2
+	l32i a0, a2, ___cpu_t_nested_OFFSET
+	bnez a0, _restore_ps_from_stack
+
+	l32i a0, a2, ___cpu_t_current_OFFSET
+	l32i a0, a0, _thread_offset_to_return_ps
+	wsr a0, ZSR_EPS
+
+	j _restore_ps_after
+
+_restore_ps_from_stack:
+#endif
+
 	l32i a0, a1, ___xtensa_irq_bsa_t_ps_OFFSET
 	wsr a0, ZSR_EPS
+
+#ifdef CONFIG_USERSPACE
+_restore_ps_after:
+#endif
 
 #if XCHAL_HAVE_FP && defined(CONFIG_CPU_HAS_FPU) && defined(CONFIG_FPU_SHARING)
 	FPU_REG_RESTORE
 #endif
 
-	l32i a0, a1, ___xtensa_irq_bsa_t_sar_OFFSET
-	wsr a0, SAR
-#if XCHAL_HAVE_LOOPS
-	l32i a0, a1, ___xtensa_irq_bsa_t_lbeg_OFFSET
-	wsr a0, LBEG
-	l32i a0, a1, ___xtensa_irq_bsa_t_lend_OFFSET
-	wsr a0, LEND
-	l32i a0, a1, ___xtensa_irq_bsa_t_lcount_OFFSET
-	wsr a0, LCOUNT
+#if defined(CONFIG_XTENSA_HIFI_SHARING)
+.extern _xtensa_hifi_load
+	call0 _xtensa_hifi_load
 #endif
-#if XCHAL_HAVE_S32C1I
-	l32i a0, a1, ___xtensa_irq_bsa_t_scompare1_OFFSET
-	wsr a0, SCOMPARE1
-#endif
-#if XCHAL_HAVE_THREADPTR && \
-	(defined(CONFIG_USERSPACE) || defined(CONFIG_THREAD_LOCAL_STORAGE))
-	l32i a0, a1, ___xtensa_irq_bsa_t_threadptr_OFFSET
-	wur a0, THREADPTR
-#endif
+
+	ODD_REG_RESTORE a0, a1
+
 	rsync
 
 	l32i a0, a1, ___xtensa_irq_bsa_t_a0_OFFSET
@@ -227,7 +240,35 @@ xtensa_arch_kernel_oops_epc:
 .global xtensa_switch
 .align 4
 xtensa_switch:
+#ifdef CONFIG_USERSPACE
+	entry a1, 32
+
+	s32i a4, a1, 0
+	s32i a5, a1, 4
+	s32i a6, a1, 8
+	s32i a7, a1, 12
+
+	rsr a6, ZSR_CPU
+	l32i a6, a6, ___cpu_t_current_OFFSET
+#ifdef CONFIG_XTENSA_MMU
+#ifdef CONFIG_XTENSA_MMU_FLUSH_AUTOREFILL_DTLBS_ON_SWAP
+	call4 xtensa_swap_update_page_tables
+#else
+	SWAP_PAGE_TABLE a6, a4, a7
+#endif
+#endif
+#ifdef CONFIG_XTENSA_MPU
+	call4 xtensa_mpu_map_write
+#endif
+
+	l32i a7, a1, 12
+	l32i a6, a1, 8
+	l32i a5, a1, 4
+	l32i a4, a1, 0
+#else
 	entry a1, 16
+#endif
+
 	SPILL_ALL_WINDOWS
 	addi a1, a1, -___xtensa_irq_bsa_t_SIZEOF
 
@@ -240,21 +281,42 @@ xtensa_switch:
 	s32i a0, a1, ___xtensa_irq_bsa_t_a0_OFFSET
 	s32i a2, a1, ___xtensa_irq_bsa_t_a2_OFFSET
 	s32i a3, a1, ___xtensa_irq_bsa_t_a3_OFFSET
-	ODD_REG_SAVE
+	ODD_REG_SAVE a0, a1
+
+#if XCHAL_HAVE_FP && defined(CONFIG_CPU_HAS_FPU) && defined(CONFIG_FPU_SHARING)
+	FPU_REG_SAVE
+#endif
 
 	/* Stash our PS register contents and a "restore" PC. */
 	rsr a0, PS
 	s32i a0, a1, ___xtensa_irq_bsa_t_ps_OFFSET
+
+#ifdef CONFIG_USERSPACE
+	/* Backtrack to the head of thread struct and
+	 * then store the PS value to be restored in
+	 * the architecture specific section.
+	 * This will be used to restore PS instead of
+	 * the one stashed inside stack.
+	 */
+	addi a3, a3, -___thread_t_switch_handle_OFFSET
+	s32i a0, a3, _thread_offset_to_return_ps
+#endif
+
 	movi a0, _switch_restore_pc
 	s32i a0, a1, ___xtensa_irq_bsa_t_pc_OFFSET
+
+#if defined(CONFIG_XTENSA_HIFI_SHARING)
+	call0 _xtensa_hifi_save
+#endif
 
 	/* Now the high registers */
 	call0 xtensa_save_high_regs
 
-#ifdef CONFIG_KERNEL_COHERENCE
+#if defined(CONFIG_KERNEL_COHERENCE) && !defined(CONFIG_SCHED_CPU_MASK_PIN_ONLY)
 	/* Flush the stack.  The top of stack was stored for us by
 	 * arch_cohere_stacks().  It can be NULL for a dummy thread.
 	 */
+	rsync
 	rsr a0, ZSR_FLUSH
 	beqz a0, noflush
 	mov a3, a1
@@ -272,16 +334,6 @@ noflush:
 	l32i a2, a1, 0
 	l32i a3, a2, ___xtensa_irq_bsa_t_a3_OFFSET
 	s32i a1, a3, 0
-
-#ifdef CONFIG_USERSPACE
-	/* Switch page tables */
-	rsr a6, ZSR_CPU
-	l32i a6, a6, ___cpu_t_current_OFFSET
-	call4 xtensa_swap_update_page_tables
-
-	l32i a2, a3, 0
-	l32i a2, a2, 0
-#endif
 
 	/* Switch stack pointer and restore.  The jump to
 	 * _restore_context does not return as such, but we arrange
@@ -312,37 +364,50 @@ _handle_excint:
 
 DEF_EXCINT 1, _handle_excint, xtensa_excint1_c
 
-#if XCHAL_NMILEVEL >= 2
+/* In code below we are using XCHAL_NMILEVEL and XCHAL_NUM_INTLEVELS
+ * (whichever is higher), since not all Xtensa configurations support
+ * NMI. In such case we will use XCHAL_NUM_INTLEVELS.
+ */
+#if XCHAL_HAVE_NMI
+#define MAX_INTR_LEVEL XCHAL_NMILEVEL
+#elif XCHAL_HAVE_INTERRUPTS
+#define MAX_INTR_LEVEL XCHAL_NUM_INTLEVELS
+#else
+#error Xtensa core with no interrupt support is used
+#define MAX_INTR_LEVEL 0
+#endif
+
+#if MAX_INTR_LEVEL >= 2
 #if !(defined(CONFIG_GDBSTUB) && (XCHAL_DEBUGLEVEL == 2))
 DEF_EXCINT 2, _handle_excint, xtensa_int2_c
 #endif
 #endif
 
-#if XCHAL_NMILEVEL >= 3
+#if MAX_INTR_LEVEL >= 3
 #if !(defined(CONFIG_GDBSTUB) && (XCHAL_DEBUGLEVEL == 3))
 DEF_EXCINT 3, _handle_excint, xtensa_int3_c
 #endif
 #endif
 
-#if XCHAL_NMILEVEL >= 4
+#if MAX_INTR_LEVEL >= 4
 #if !(defined(CONFIG_GDBSTUB) && (XCHAL_DEBUGLEVEL == 4))
 DEF_EXCINT 4, _handle_excint, xtensa_int4_c
 #endif
 #endif
 
-#if XCHAL_NMILEVEL >= 5
+#if MAX_INTR_LEVEL >= 5
 #if !(defined(CONFIG_GDBSTUB) && (XCHAL_DEBUGLEVEL == 5))
 DEF_EXCINT 5, _handle_excint, xtensa_int5_c
 #endif
 #endif
 
-#if XCHAL_NMILEVEL >= 6
+#if MAX_INTR_LEVEL >= 6
 #if !(defined(CONFIG_GDBSTUB) && (XCHAL_DEBUGLEVEL == 6))
 DEF_EXCINT 6, _handle_excint, xtensa_int6_c
 #endif
 #endif
 
-#if XCHAL_NMILEVEL >= 7
+#if MAX_INTR_LEVEL >= 7
 #if !(defined(CONFIG_GDBSTUB) && (XCHAL_DEBUGLEVEL == 7))
 DEF_EXCINT 7, _handle_excint, xtensa_int7_c
 #endif
@@ -372,9 +437,11 @@ _Level1RealVector:
 	rsr.exccause a0
 #ifdef CONFIG_XTENSA_MMU
 	beqi a0, EXCCAUSE_ITLB_MISS, _handle_tlb_miss_user
+#endif /* CONFIG_XTENSA_MMU */
 #ifdef CONFIG_USERSPACE
 	beqi a0, EXCCAUSE_SYSCALL, _syscall
 #endif /* CONFIG_USERSPACE */
+#ifdef CONFIG_XTENSA_MMU
 	addi a0, a0, -EXCCAUSE_DTLB_MISS
 	beqz a0, _handle_tlb_miss_user
 	rsr.exccause a0
@@ -404,12 +471,12 @@ _handle_tlb_miss_user:
 	l32i a0, a0, 0
 	rsr a0, ZSR_A0SAVE
 	rfe
+#endif /* CONFIG_XTENSA_MMU */
 #ifdef CONFIG_USERSPACE
 _syscall:
 	rsr a0, ZSR_A0SAVE
 	j xtensa_do_syscall
 #endif /* CONFIG_USERSPACE */
-#endif /* CONFIG_XTENSA_MMU */
 .popsection
 
 /* In theory you can have levels up to 15, but known hardware only uses 7. */
@@ -460,13 +527,29 @@ _DoubleExceptionVector:
 	addi a0, a0, -EXCCAUSE_DTLB_MISS
 	beqz a0, _handle_tlb_miss_dblexc
 
+	/* Need to stash the DEPC for used by the C handler.
+	 * If we encounter any DTLB misses when PS.EXCM is set,
+	 * this vector will be used and the DEPC register will
+	 * have the new address instead of the one resulted in
+	 * double exception.
+	 */
+	rsr.depc a0
+	wsr a0, ZSR_DEPC_SAVE
+
 	rsr a0, ZSR_DBLEXC
 
 	j _Level1Vector
-#else
 
-#if defined(CONFIG_SIMULATOR_XTENSA) || defined(XT_SIMULATOR)
-1:
+_TripleFault:
+#endif /* CONFIG_XTENSA_MMU */
+
+#if XCHAL_HAVE_DEBUG && defined(CONFIG_XTENSA_BREAK_ON_UNRECOVERABLE_EXCEPTIONS)
+	/* Signals an unhandled double exception, and unrecoverable exceptions.
+	 * Definitely needs debugger to be attached to the hardware or simulator
+	 * to catch this.
+	 */
+	break	1, 4
+#elif defined(CONFIG_SIMULATOR_XTENSA) || defined(XT_SIMULATOR)
 /* Tell simulator to stop executing here, instead of trying to do
  * an infinite loop (see below). Greatly help with using tracing in
  * simulator so that traces will not have infinite iterations of
@@ -475,14 +558,9 @@ _DoubleExceptionVector:
 	movi a3, 1
 	movi a2, SYS_exit
 	simcall
-#elif XCHAL_HAVE_DEBUG
-/* Signals an unhandled double exception */
-1:	break	1, 4
-#else
-1:
 #endif
+1:
 	j	1b
-#endif /* CONFIG_XTENSA_MMU */
 
 #ifdef CONFIG_XTENSA_MMU
 _handle_tlb_miss_dblexc:

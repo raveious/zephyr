@@ -1,20 +1,22 @@
-# Copyright (c) 2022 Intel Corporation
+# Copyright (c) 2022-2024 Intel Corporation
 #
 # SPDX-License-Identifier: Apache-2.0
 
 '''Runner for flashing with the Intel ADSP boards.'''
 
 import argparse
-import os
-import sys
-import re
 import hashlib
+import os
 import random
+import re
 import shutil
-from runners.core import ZephyrBinaryRunner, RunnerCaps
+import sys
+
 from zephyr_ext_common import ZEPHYR_BASE
 
-DEFAULT_CAVSTOOL='soc/xtensa/intel_adsp/tools/cavstool_client.py'
+from runners.core import RunnerCaps, ZephyrBinaryRunner
+
+DEFAULT_CAVSTOOL='soc/intel/intel_adsp/tools/cavstool_client.py'
 
 class SignParamError(argparse.Action):
     'User-friendly feedback when trying to sign with west flash'
@@ -60,7 +62,8 @@ class IntelAdspBinaryRunner(ZephyrBinaryRunner):
 
         for old_sign_param in [ '--rimage-tool', '--config-dir', '--default-key', '--key']:
             parser.add_argument(old_sign_param, action=SignParamError,
-                            help='do not use, "west sign" is now called from CMake, see "west sign -h"')
+                                help='''do not use, "west sign" is now called from CMake,
+                                see "west sign -h"''')
 
     @classmethod
     def tool_opt_help(cls) -> str:
@@ -78,7 +81,7 @@ class IntelAdspBinaryRunner(ZephyrBinaryRunner):
     def do_run(self, command, **kwargs):
         self.logger.info('Starting Intel ADSP runner')
 
-        if re.search("intel_adsp", self.platform):
+        if re.search("adsp", self.platform):
             self.require(self.cavstool)
             self.flash(**kwargs)
         else:
@@ -87,7 +90,7 @@ class IntelAdspBinaryRunner(ZephyrBinaryRunner):
 
     def flash(self, **kwargs):
         'Generate a hash string for appending to the sending ri file'
-        hash_object = hashlib.md5(self.bin_fw.encode())
+        hash_object = hashlib.md5(self.bin_fw.encode(), usedforsecurity=False)
         random_str = f"{random.getrandbits(64)}".encode()
         hash_object.update(random_str)
         send_bin_fw = str(self.bin_fw + "." + hash_object.hexdigest())

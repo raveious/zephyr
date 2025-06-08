@@ -275,7 +275,7 @@ static int adc_ads7052_init(const struct device *dev)
 	}
 
 	k_thread_create(&data->thread, data->stack,
-			CONFIG_ADC_ADS7052_ACQUISITION_THREAD_STACK_SIZE,
+			K_KERNEL_STACK_SIZEOF(data->stack),
 			ads7052_acquisition_thread, data, NULL, NULL,
 			CONFIG_ADC_ADS7052_ACQUISITION_THREAD_PRIO, 0, K_NO_WAIT);
 
@@ -284,7 +284,7 @@ static int adc_ads7052_init(const struct device *dev)
 	return 0;
 }
 
-static const struct adc_driver_api ads7052_api = {
+static DEVICE_API(adc, ads7052_api) = {
 	.channel_setup = adc_ads7052_channel_setup,
 	.read = adc_ads7052_read,
 #ifdef CONFIG_ADC_ASYNC

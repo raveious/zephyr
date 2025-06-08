@@ -10,17 +10,17 @@
 		 * sorted in the order they will be initialized (i.e. ordered
 		 * by level, sorted by priority within a level)
 		 */
-		__init_start = .;
+		PLACE_SYMBOL_HERE(__init_start);
 		CREATE_OBJ_LEVEL(init, EARLY)
 		CREATE_OBJ_LEVEL(init, PRE_KERNEL_1)
 		CREATE_OBJ_LEVEL(init, PRE_KERNEL_2)
 		CREATE_OBJ_LEVEL(init, POST_KERNEL)
 		CREATE_OBJ_LEVEL(init, APPLICATION)
 		CREATE_OBJ_LEVEL(init, SMP)
-		__init_end = .;
+		PLACE_SYMBOL_HERE(__init_end);
 	} GROUP_ROM_LINK_IN(RAMABLE_REGION, ROMABLE_REGION)
 
-	ITERABLE_SECTION_ROM_NUMERIC(device, 4)
+	ITERABLE_SECTION_ROM_NUMERIC(device, Z_LINK_ITERABLE_SUBALIGN)
 
 #if defined(CONFIG_GEN_SW_ISR_TABLE) && defined(CONFIG_SHARED_INTERRUPTS)
 	/* since z_shared_isr() is not referenced anywhere when
@@ -38,7 +38,7 @@
 	 */
 	SECTION_PROLOGUE(.text.z_shared_isr,,)
 	{
-		KEEP(*(.text.z_shared_isr))
+		KEEP(*(.text.z_shared_isr*))
 	} GROUP_ROM_LINK_IN(RAMABLE_REGION, ROMABLE_REGION)
 #endif
 
@@ -67,7 +67,7 @@
 	/* verify we don't have rogue .z_init_<something> initlevel sections */
 	SECTION_PROLOGUE(initlevel_error,,)
 	{
-		KEEP(*(SORT(.z_init_[_A-Z0-9]*)))
+		KEEP(*(SORT(.z_init_*)))
 	}
 	ASSERT(SIZEOF(initlevel_error) == 0, "Undefined initialization levels used.")
 
@@ -75,22 +75,22 @@
 	/* Build-time assignment of permissions to kernel objects to
 	 * threads declared with K_THREAD_DEFINE()
 	 */
-	ITERABLE_SECTION_ROM(k_object_assignment, 4)
+	ITERABLE_SECTION_ROM(k_object_assignment, Z_LINK_ITERABLE_SUBALIGN)
 #endif
 
 	SECTION_DATA_PROLOGUE(app_shmem_regions,,)
 	{
-		__app_shmem_regions_start = .;
+		PLACE_SYMBOL_HERE(__app_shmem_regions_start);
 		KEEP(*(SORT(.app_regions.*)));
-		__app_shmem_regions_end = .;
+		PLACE_SYMBOL_HERE(__app_shmem_regions_end);
 	} GROUP_ROM_LINK_IN(RAMABLE_REGION, ROMABLE_REGION)
 
-	ITERABLE_SECTION_ROM(k_p4wq_initparam, 4)
+	ITERABLE_SECTION_ROM(k_p4wq_initparam, Z_LINK_ITERABLE_SUBALIGN)
 
-	ITERABLE_SECTION_ROM(_static_thread_data, 4)
+	ITERABLE_SECTION_ROM(_static_thread_data, Z_LINK_ITERABLE_SUBALIGN)
 
 #if defined(CONFIG_PCIE)
-	ITERABLE_SECTION_ROM(irq_alloc, 4)
+	ITERABLE_SECTION_ROM(irq_alloc, Z_LINK_ITERABLE_SUBALIGN)
 #endif /* CONFIG_PCIE */
 
 #if !defined(CONFIG_DEVICE_DEPS_DYNAMIC)
@@ -99,3 +99,5 @@
 #include <zephyr/linker/device-deps.ld>
 	} GROUP_ROM_LINK_IN(RAMABLE_REGION, ROMABLE_REGION)
 #endif /* !CONFIG_DEVICE_DEPS_DYNAMIC */
+
+#include <device-api-sections.ld>

@@ -31,6 +31,7 @@
 include_guard(GLOBAL)
 
 include(extensions)
+include(python)
 
 # Check that SHIELD has not changed.
 zephyr_check_cache(SHIELD WATCH)
@@ -46,73 +47,86 @@ endif()
 # After processing all shields, only invalid shields will be left in this list.
 set(SHIELD-NOTFOUND ${SHIELD_AS_LIST})
 
-foreach(root ${BOARD_ROOT})
-  set(shield_dir ${root}/boards/shields)
-  # Match the Kconfig.shield files in the shield directories to make sure we are
-  # finding shields, e.g. x_nucleo_iks01a1/Kconfig.shield
-  file(GLOB_RECURSE shields_refs_list ${shield_dir}/*/Kconfig.shield)
+# Prepare list shields command.
+# This command is used for locating the shield dir as well as printing all shields
+# in the system in the following cases:
+# - User specifies an invalid SHIELD
+# - User invokes '<build-command> shields' target
+list(TRANSFORM BOARD_ROOT PREPEND "--board-root=" OUTPUT_VARIABLE board_root_args)
 
-  # The above gives a list of Kconfig.shield files, like this:
-  #
-  # x_nucleo_iks01a1/Kconfig.shield;x_nucleo_iks01a2/Kconfig.shield
-  #
-  # we construct a list of shield names by extracting the directories
-  # from each file and looking for <shield>.overlay files in there.
-  # Each overlay corresponds to a shield. We obtain the shield name by
-  # removing the .overlay extension.
-  unset(SHIELD_LIST)
-  foreach(shields_refs ${shields_refs_list})
-    get_filename_component(shield_path ${shields_refs} DIRECTORY)
-    file(GLOB shield_overlays RELATIVE ${shield_path} ${shield_path}/*.overlay)
-    foreach(overlay ${shield_overlays})
-      get_filename_component(shield ${overlay} NAME_WE)
-      list(APPEND SHIELD_LIST ${shield})
-      set(SHIELD_DIR_${shield} ${shield_path})
-    endforeach()
+set(list_shields_commands
+  COMMAND ${PYTHON_EXECUTABLE} ${ZEPHYR_BASE}/scripts/list_shields.py
+  ${board_root_args} --json
+)
+
+# Get list of shields in JSON format
+execute_process(${list_shields_commands}
+  OUTPUT_VARIABLE shields_json
+  ERROR_VARIABLE err_shields
+  RESULT_VARIABLE ret_val
+)
+
+if(ret_val)
+  message(FATAL_ERROR "Error finding shields\nError message: ${err_shields}")
+endif()
+
+string(JSON shields_length LENGTH ${shields_json})
+
+if(shields_length GREATER 0)
+  math(EXPR shields_length "${shields_length} - 1")
+
+  foreach(i RANGE ${shields_length})
+    string(JSON shield GET "${shields_json}" "${i}")
+    string(JSON shield_name GET ${shield} name)
+    string(JSON shield_dir GET ${shield} dir)
+    list(APPEND SHIELD_LIST ${shield_name})
+    set(SHIELD_DIR_${shield_name} ${shield_dir})
   endforeach()
+endif()
 
-  if(DEFINED SHIELD)
-    foreach(s ${SHIELD_AS_LIST})
-      if(NOT ${s} IN_LIST SHIELD_LIST)
-        continue()
-      endif()
+# Process shields in-order
+if(DEFINED SHIELD)
+  foreach(s ${SHIELD_AS_LIST})
+    if(NOT ${s} IN_LIST SHIELD_LIST)
+      continue()
+    endif()
 
-      list(REMOVE_ITEM SHIELD-NOTFOUND ${s})
+    list(REMOVE_ITEM SHIELD-NOTFOUND ${s})
 
-      # Add <shield>.overlay to the shield_dts_files output variable.
-      list(APPEND
-        shield_dts_files
-        ${SHIELD_DIR_${s}}/${s}.overlay
-        )
-
-      # Add the shield's directory to the SHIELD_DIRS output variable.
-      list(APPEND
-        SHIELD_DIRS
-        ${SHIELD_DIR_${s}}
-        )
-
-      # Search for shield/shield.conf file
-      if(EXISTS ${SHIELD_DIR_${s}}/${s}.conf)
-        # Add <shield>.conf to the shield_conf_files output variable.
-        list(APPEND
-          shield_conf_files
-          ${SHIELD_DIR_${s}}/${s}.conf
-          )
-      endif()
-
-      # Add board-specific .conf and .overlay files to their
-      # respective output variables.
-      zephyr_file(CONF_FILES ${SHIELD_DIR_${s}}/boards
-                  DTS   shield_dts_files
-                  KCONF shield_conf_files
+    # Add <shield>.overlay to the shield_dts_files output variable.
+    list(APPEND
+      shield_dts_files
+      ${SHIELD_DIR_${s}}/${s}.overlay
       )
-      zephyr_file(CONF_FILES ${SHIELD_DIR_${s}}/boards/${s}
-                  DTS   shield_dts_files
-                  KCONF shield_conf_files
+
+    # Add the shield's directory to the SHIELD_DIRS output variable.
+    list(APPEND
+      SHIELD_DIRS
+      ${SHIELD_DIR_${s}}
       )
-    endforeach()
-  endif()
-endforeach()
+
+    include(${SHIELD_DIR_${s}}/pre_dt_shield.cmake OPTIONAL)
+
+    # Search for shield/shield.conf file
+    if(EXISTS ${SHIELD_DIR_${s}}/${s}.conf)
+      list(APPEND
+        shield_conf_files
+        ${SHIELD_DIR_${s}}/${s}.conf
+        )
+    endif()
+
+    # Add board-specific .conf and .overlay files to their
+    # respective output variables.
+    zephyr_file(CONF_FILES ${SHIELD_DIR_${s}}/boards
+                DTS   shield_dts_files
+                KCONF shield_conf_files
+    )
+    zephyr_file(CONF_FILES ${SHIELD_DIR_${s}}/boards/${s}
+                DTS   shield_dts_files
+                KCONF shield_conf_files
+    )
+  endforeach()
+endif()
 
 # Prepare shield usage command printing.
 # This command prints all shields in the system in the following cases:
