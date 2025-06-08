@@ -115,7 +115,7 @@ void pipe_test(void)
 			PRINT_STRING("|                      "
 				 "non-matching sizes (1_TO_N) to lower priority"
 						 "          |\n");
-			test_thread_priority_set(k_current_get(), TaskPrio - 2);
+			k_thread_priority_set(k_current_get(), TaskPrio - 2);
 		}
 		PRINT_STRING(dashline);
 		PRINT_1_TO_N_HEADER();
@@ -136,7 +136,7 @@ void pipe_test(void)
 		PRINT_1_TO_N();
 	}
 		PRINT_STRING(dashline);
-		test_thread_priority_set(k_current_get(), TaskPrio);
+		k_thread_priority_set(k_current_get(), TaskPrio);
 	}
 }
 
@@ -171,16 +171,10 @@ int pipeput(struct k_pipe *pipe,
 	for (i = 0; option == _1_TO_N || (i < count); i++) {
 		size_t sizexferd = 0;
 		size_t size2xfer = MIN(size, size2xfer_total - sizexferd_total);
-		int ret;
-		size_t mim_num_of_bytes = 0;
 
-		if (option == _ALL_N) {
-			mim_num_of_bytes = size2xfer;
-		}
-		ret = k_pipe_put(pipe, data_bench, size2xfer,
-				&sizexferd, mim_num_of_bytes, K_FOREVER);
+		sizexferd = k_pipe_write(pipe, data_bench, size2xfer, K_FOREVER);
 
-		if (ret != 0) {
+		if (sizexferd < 0) {
 			return 1;
 		}
 		if (option == _ALL_N && sizexferd != size2xfer) {

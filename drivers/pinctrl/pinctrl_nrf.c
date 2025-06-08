@@ -7,6 +7,9 @@
 #include <zephyr/drivers/pinctrl.h>
 
 #include <hal/nrf_gpio.h>
+#ifdef CONFIG_SOC_NRF54H20_GPD
+#include <nrf/gpd.h>
+#endif
 
 BUILD_ASSERT(((NRF_PULL_NONE == NRF_GPIO_PIN_NOPULL) &&
 	      (NRF_PULL_DOWN == NRF_GPIO_PIN_PULLDOWN) &&
@@ -37,59 +40,85 @@ static const nrf_gpio_pin_drive_t drive_modes[NRF_DRIVE_COUNT] = {
 
 #define PSEL_DISCONNECTED 0xFFFFFFFFUL
 
-#if DT_HAS_COMPAT_STATUS_OKAY(nordic_nrf_uart)
+#if DT_HAS_COMPAT_STATUS_OKAY(nordic_nrf_uart) || defined(CONFIG_NRFX_UART)
 #define NRF_PSEL_UART(reg, line) ((NRF_UART_Type *)reg)->PSEL##line
-#elif DT_HAS_COMPAT_STATUS_OKAY(nordic_nrf_uarte)
+#elif DT_HAS_COMPAT_STATUS_OKAY(nordic_nrf_uarte) || defined(CONFIG_NRFX_UARTE)
+#include <hal/nrf_uarte.h>
 #define NRF_PSEL_UART(reg, line) ((NRF_UARTE_Type *)reg)->PSEL.line
 #endif
 
-#if DT_HAS_COMPAT_STATUS_OKAY(nordic_nrf_spi)
+#if DT_HAS_COMPAT_STATUS_OKAY(nordic_nrf_spi) || defined(CONFIG_NRFX_SPI)
 #define NRF_PSEL_SPIM(reg, line) ((NRF_SPI_Type *)reg)->PSEL##line
-#elif DT_HAS_COMPAT_STATUS_OKAY(nordic_nrf_spim)
+#elif DT_HAS_COMPAT_STATUS_OKAY(nordic_nrf_spim) || defined(CONFIG_NRFX_SPIM)
+#include <hal/nrf_spim.h>
 #define NRF_PSEL_SPIM(reg, line) ((NRF_SPIM_Type *)reg)->PSEL.line
 #endif
 
-#if DT_HAS_COMPAT_STATUS_OKAY(nordic_nrf_spis)
+#if DT_HAS_COMPAT_STATUS_OKAY(nordic_nrf_spis) || defined(CONFIG_NRFX_SPIS)
+#include <hal/nrf_spis.h>
 #if defined(NRF51)
 #define NRF_PSEL_SPIS(reg, line) ((NRF_SPIS_Type *)reg)->PSEL##line
 #else
 #define NRF_PSEL_SPIS(reg, line) ((NRF_SPIS_Type *)reg)->PSEL.line
 #endif
-#endif /* DT_HAS_COMPAT_STATUS_OKAY(nordic_nrf_spis) */
+#endif
 
-#if DT_HAS_COMPAT_STATUS_OKAY(nordic_nrf_twi)
+#if DT_HAS_COMPAT_STATUS_OKAY(nordic_nrf_twi) || defined(CONFIG_NRFX_TWI)
 #if !defined(TWI_PSEL_SCL_CONNECT_Pos)
 #define NRF_PSEL_TWIM(reg, line) ((NRF_TWI_Type *)reg)->PSEL##line
 #else
 #define NRF_PSEL_TWIM(reg, line) ((NRF_TWI_Type *)reg)->PSEL.line
 #endif
-#elif DT_HAS_COMPAT_STATUS_OKAY(nordic_nrf_twim)
+#elif DT_HAS_COMPAT_STATUS_OKAY(nordic_nrf_twim) || defined(CONFIG_NRFX_TWIM)
+#include <hal/nrf_twim.h>
 #define NRF_PSEL_TWIM(reg, line) ((NRF_TWIM_Type *)reg)->PSEL.line
 #endif
 
-#if DT_HAS_COMPAT_STATUS_OKAY(nordic_nrf_i2s)
+#if DT_HAS_COMPAT_STATUS_OKAY(nordic_nrf_i2s) || defined(CONFIG_NRFX_I2S)
 #define NRF_PSEL_I2S(reg, line) ((NRF_I2S_Type *)reg)->PSEL.line
 #endif
 
-#if DT_HAS_COMPAT_STATUS_OKAY(nordic_nrf_pdm)
+#if DT_HAS_COMPAT_STATUS_OKAY(nordic_nrf_pdm) || defined(CONFIG_NRFX_PDM)
 #define NRF_PSEL_PDM(reg, line) ((NRF_PDM_Type *)reg)->PSEL.line
 #endif
 
-#if DT_HAS_COMPAT_STATUS_OKAY(nordic_nrf_pwm)
+#if DT_HAS_COMPAT_STATUS_OKAY(nordic_nrf_pwm) || defined(CONFIG_NRFX_PWM)
 #define NRF_PSEL_PWM(reg, line) ((NRF_PWM_Type *)reg)->PSEL.line
 #endif
 
-#if DT_HAS_COMPAT_STATUS_OKAY(nordic_nrf_qdec)
+#if DT_HAS_COMPAT_STATUS_OKAY(nordic_nrf_qdec) || defined(CONFIG_NRFX_QDEC)
 #define NRF_PSEL_QDEC(reg, line) ((NRF_QDEC_Type *)reg)->PSEL.line
 #endif
 
-#if DT_HAS_COMPAT_STATUS_OKAY(nordic_nrf_qspi)
+#if DT_HAS_COMPAT_STATUS_OKAY(nordic_nrf_qspi) || defined(CONFIG_NRFX_QSPI)
 #define NRF_PSEL_QSPI(reg, line) ((NRF_QSPI_Type *)reg)->PSEL.line
+#endif
+
+#if DT_HAS_COMPAT_STATUS_OKAY(nordic_nrf_twis) || defined(CONFIG_NRFX_TWIS)
+#include <hal/nrf_twis.h>
+#define NRF_PSEL_TWIS(reg, line) ((NRF_TWIS_Type *)reg)->PSEL.line
+#endif
+
+#if DT_HAS_COMPAT_STATUS_OKAY(nordic_nrf_grtc) || defined(CONFIG_NRFX_GRTC)
+#if DT_NODE_HAS_PROP(DT_NODELABEL(grtc), clkout_fast_frequency_hz)
+#define NRF_GRTC_CLKOUT_FAST 1
+#endif
+#if DT_NODE_HAS_PROP(DT_NODELABEL(grtc), clkout_32k)
+#define NRF_GRTC_CLKOUT_SLOW 1
+#endif
+#endif
+
+#if DT_HAS_COMPAT_STATUS_OKAY(nordic_nrf_tdm)
+#define NRF_PSEL_TDM(reg, line) ((NRF_TDM_Type *)reg)->PSEL.line
 #endif
 
 int pinctrl_configure_pins(const pinctrl_soc_pin_t *pins, uint8_t pin_cnt,
 			   uintptr_t reg)
 {
+#ifdef CONFIG_SOC_NRF54H20_GPD
+	bool gpd_requested = false;
+#endif
+
 	for (uint8_t i = 0U; i < pin_cnt; i++) {
 		nrf_gpio_pin_drive_t drive;
 		uint8_t drive_idx = NRF_GET_DRIVE(pins[i]);
@@ -324,10 +353,117 @@ int pinctrl_configure_pins(const pinctrl_soc_pin_t *pins, uint8_t pin_cnt,
 			break;
 		case NRF_FUN_QSPI_IO3:
 			NRF_PSEL_QSPI(reg, IO3) = psel;
-			dir = NRF_GPIO_PIN_DIR_INPUT;
+			write = 1U;
+			dir = NRF_GPIO_PIN_DIR_OUTPUT;
 			input = NRF_GPIO_PIN_INPUT_DISCONNECT;
 			break;
 #endif /* defined(NRF_PSEL_QSPI) */
+#if defined(NRF_PSEL_TDM)
+		case NRF_FUN_TDM_SCK_M:
+			NRF_PSEL_TDM(reg, SCK) = psel;
+			write = 0U;
+			dir = NRF_GPIO_PIN_DIR_OUTPUT;
+			input = NRF_GPIO_PIN_INPUT_DISCONNECT;
+			break;
+		case NRF_FUN_TDM_SCK_S:
+			NRF_PSEL_TDM(reg, SCK) = psel;
+			dir = NRF_GPIO_PIN_DIR_INPUT;
+			input = NRF_GPIO_PIN_INPUT_CONNECT;
+			break;
+		case NRF_FUN_TDM_FSYNC_M:
+			NRF_PSEL_TDM(reg, FSYNC) = psel;
+			write = 0U;
+			dir = NRF_GPIO_PIN_DIR_OUTPUT;
+			input = NRF_GPIO_PIN_INPUT_DISCONNECT;
+			break;
+		case NRF_FUN_TDM_FSYNC_S:
+			NRF_PSEL_TDM(reg, FSYNC) = psel;
+			dir = NRF_GPIO_PIN_DIR_INPUT;
+			input = NRF_GPIO_PIN_INPUT_CONNECT;
+			break;
+		case NRF_FUN_TDM_SDIN:
+			NRF_PSEL_TDM(reg, SDIN) = psel;
+			dir = NRF_GPIO_PIN_DIR_INPUT;
+			input = NRF_GPIO_PIN_INPUT_CONNECT;
+			break;
+		case NRF_FUN_TDM_SDOUT:
+			NRF_PSEL_TDM(reg, SDOUT) = psel;
+			write = 0U;
+			dir = NRF_GPIO_PIN_DIR_OUTPUT;
+			input = NRF_GPIO_PIN_INPUT_DISCONNECT;
+			break;
+		case NRF_FUN_TDM_MCK:
+			NRF_PSEL_TDM(reg, MCK) = psel;
+			write = 0U;
+			dir = NRF_GPIO_PIN_DIR_OUTPUT;
+			input = NRF_GPIO_PIN_INPUT_DISCONNECT;
+			break;
+#endif /* defined(NRF_PSEL_TDM) */
+#if defined(NRF_GRTC_CLKOUT_FAST)
+		case NRF_FUN_GRTC_CLKOUT_FAST:
+#if NRF_GPIO_HAS_SEL && defined(GPIO_PIN_CNF_CTRLSEL_GRTC)
+			nrf_gpio_pin_control_select(psel, NRF_GPIO_PIN_SEL_GRTC);
+#endif
+			dir = NRF_GPIO_PIN_DIR_OUTPUT;
+			input = NRF_GPIO_PIN_INPUT_DISCONNECT;
+			break;
+#endif /* defined(NRF_GRTC_CLKOUT_FAST) */
+#if defined(NRF_GRTC_CLKOUT_SLOW)
+		case NRF_FUN_GRTC_CLKOUT_32K:
+#if NRF_GPIO_HAS_SEL && defined(GPIO_PIN_CNF_CTRLSEL_GRTC)
+			nrf_gpio_pin_control_select(psel, NRF_GPIO_PIN_SEL_GRTC);
+#endif
+			dir = NRF_GPIO_PIN_DIR_OUTPUT;
+			input = NRF_GPIO_PIN_INPUT_DISCONNECT;
+			break;
+#endif /* defined(NRF_GRTC_CLKOUT_SLOW) */
+#if DT_HAS_COMPAT_STATUS_OKAY(nordic_nrf_can)
+		/* Pin routing is controlled by secure domain, via UICR */
+		case NRF_FUN_CAN_TX:
+			dir = NRF_GPIO_PIN_DIR_OUTPUT;
+			input = NRF_GPIO_PIN_INPUT_DISCONNECT;
+			break;
+		case NRF_FUN_CAN_RX:
+			dir = NRF_GPIO_PIN_DIR_INPUT;
+			input = NRF_GPIO_PIN_INPUT_CONNECT;
+			break;
+#endif /* DT_HAS_COMPAT_STATUS_OKAY(nordic_nrf_can) */
+#if DT_HAS_COMPAT_STATUS_OKAY(nordic_nrf_exmif)
+		/* Pin routing is controlled by secure domain, via UICR */
+		case NRF_FUN_EXMIF_CK:
+		case NRF_FUN_EXMIF_DQ0:
+		case NRF_FUN_EXMIF_DQ1:
+		case NRF_FUN_EXMIF_DQ2:
+		case NRF_FUN_EXMIF_DQ3:
+		case NRF_FUN_EXMIF_DQ4:
+		case NRF_FUN_EXMIF_DQ5:
+		case NRF_FUN_EXMIF_DQ6:
+		case NRF_FUN_EXMIF_DQ7:
+		case NRF_FUN_EXMIF_CS0:
+		case NRF_FUN_EXMIF_CS1:
+		case NRF_FUN_EXMIF_RWDS:
+			dir = NRF_GPIO_PIN_DIR_INPUT;
+			input = NRF_GPIO_PIN_INPUT_DISCONNECT;
+			break;
+#endif /* DT_HAS_COMPAT_STATUS_OKAY(nordic_nrf_exmif) */
+#if defined(NRF_PSEL_TWIS)
+		case NRF_FUN_TWIS_SCL:
+			NRF_PSEL_TWIS(reg, SCL) = psel;
+			if (drive == NRF_GPIO_PIN_S0S1) {
+				drive = NRF_GPIO_PIN_S0D1;
+			}
+			dir = NRF_GPIO_PIN_DIR_INPUT;
+			input = NRF_GPIO_PIN_INPUT_CONNECT;
+			break;
+		case NRF_FUN_TWIS_SDA:
+			NRF_PSEL_TWIS(reg, SDA) = psel;
+			if (drive == NRF_GPIO_PIN_S0S1) {
+				drive = NRF_GPIO_PIN_S0D1;
+			}
+			dir = NRF_GPIO_PIN_DIR_INPUT;
+			input = NRF_GPIO_PIN_INPUT_CONNECT;
+			break;
+#endif /* defined(NRF_PSEL_TWIS) */
 		default:
 			return -ENOTSUP;
 		}
@@ -335,6 +471,22 @@ int pinctrl_configure_pins(const pinctrl_soc_pin_t *pins, uint8_t pin_cnt,
 		/* configure GPIO properties */
 		if (psel != PSEL_DISCONNECTED) {
 			uint32_t pin = psel;
+
+#ifdef CONFIG_SOC_NRF54H20_GPD
+			if (NRF_GET_GPD_FAST_ACTIVE1(pins[i]) == 1U) {
+				if (!gpd_requested) {
+					int ret;
+
+					ret = nrf_gpd_request(NRF_GPD_SLOW_ACTIVE);
+					if (ret < 0) {
+						return ret;
+					}
+					gpd_requested = true;
+				}
+
+				nrf_gpio_pin_retain_disable(pin);
+			}
+#endif /* CONFIG_SOC_NRF54H20_GPD */
 
 			if (write != NO_WRITE) {
 				nrf_gpio_pin_write(pin, write);
@@ -348,8 +500,27 @@ int pinctrl_configure_pins(const pinctrl_soc_pin_t *pins, uint8_t pin_cnt,
 
 			nrf_gpio_cfg(pin, dir, input, NRF_GET_PULL(pins[i]),
 				     drive, NRF_GPIO_PIN_NOSENSE);
+#if NRF_GPIO_HAS_CLOCKPIN
+			nrf_gpio_pin_clock_set(pin, NRF_GET_CLOCKPIN_ENABLE(pins[i]));
+#endif
+#ifdef CONFIG_SOC_NRF54H20_GPD
+			if (NRF_GET_GPD_FAST_ACTIVE1(pins[i]) == 1U) {
+				nrf_gpio_pin_retain_enable(pin);
+			}
+#endif /* CONFIG_SOC_NRF54H20_GPD */
 		}
 	}
+
+#ifdef CONFIG_SOC_NRF54H20_GPD
+	if (gpd_requested) {
+		int ret;
+
+		ret = nrf_gpd_release(NRF_GPD_SLOW_ACTIVE);
+		if (ret < 0) {
+			return ret;
+		}
+	}
+#endif
 
 	return 0;
 }

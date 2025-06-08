@@ -279,9 +279,7 @@ static inline uint8_t *get_mac(const struct device *dev)
 	struct cc2520_context *cc2520 = dev->data;
 
 #if defined(CONFIG_IEEE802154_CC2520_RANDOM_MAC)
-	uint32_t *ptr = (uint32_t *)(cc2520->mac_addr + 4);
-
-	UNALIGNED_PUT(sys_rand32_get(), ptr);
+	sys_rand_get(&cc2520->mac_addr[4], 4U);
 
 	cc2520->mac_addr[7] = (cc2520->mac_addr[7] & ~0x01) | 0x02;
 #else
@@ -626,7 +624,7 @@ static void cc2520_rx(void *p1, void *p2, void *p3)
 			goto flush;
 		}
 
-		if (!IS_ENABLED(CONFIG_IEEE802154_RAW_MODE)) {
+		if (!IS_ENABLED(CONFIG_IEEE802154_L2_PKT_INCL_FCS)) {
 			pkt_len -= 2U;
 		}
 
@@ -1399,7 +1397,7 @@ static int cc2520_crypto_init(const struct device *dev)
 	return 0;
 }
 
-struct crypto_driver_api cc2520_crypto_api = {
+DEVICE_API(crypto, cc2520_crypto_api) = {
 	.query_hw_caps			= cc2520_crypto_hw_caps,
 	.cipher_begin_session			= cc2520_crypto_begin_session,
 	.cipher_free_session			= cc2520_crypto_free_session,

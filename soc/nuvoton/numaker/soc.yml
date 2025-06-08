@@ -4,3 +4,9 @@ family:
   - name: m46x
     socs:
     - name: m467
+  - name: m2l31x
+    socs:
+    - name: m2l31xxx
+  - name: m55m1x
+    socs:
+    - name: m55m1xxx

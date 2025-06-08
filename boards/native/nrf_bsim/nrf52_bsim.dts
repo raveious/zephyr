@@ -36,10 +36,9 @@
 	chosen {
 		zephyr,ieee802154 = &ieee802154;
 		zephyr,flash = &flash0;
+		zephyr,console = &uart0;
 		/* UART used by the BT controller UART HCI driver by default: */
 		zephyr,bt-c2h-uart = &uart1;
-		/* UART used by the BT host UART HCI driver by default: */
-		zephyr,bt-uart = &uart1;
 	};
 
 	soc {
@@ -68,7 +67,6 @@
 &radio {
 	/* These features are not yet supported by the RADIO model */
 	/delete-property/ dfe-supported;
-	/delete-property/ ble-coded-phy-supported;
 };
 
 &gpiote {
@@ -118,4 +116,9 @@
 	pinctrl-1 = <&uart1_sleep>;
 	pinctrl-names = "default", "sleep";
 	hw-flow-control;
+
+	bt_hci_uart: bt_hci_uart {
+		compatible = "zephyr,bt-hci-uart";
+		status = "okay";
+	};
 };

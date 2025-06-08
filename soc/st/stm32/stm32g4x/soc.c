@@ -20,16 +20,20 @@
 #include <stm32_ll_pwr.h>
 #endif /* PWR_CR3_UCPD_DBDIS */
 
+extern void stm32_power_init(void);
+
 /**
  * @brief Perform basic hardware initialization at boot.
  *
  * This needs to be run from the very beginning.
- * So the init priority has to be 0 (zero).
- *
- * @return 0
  */
-static int stm32g4_init(void)
+void soc_early_init_hook(void)
 {
+	/* Enable ART Accelerator I/D-cache and prefetch */
+	LL_FLASH_EnableInstCache();
+	LL_FLASH_EnableDataCache();
+	LL_FLASH_EnablePrefetch();
+
 	/* Update CMSIS SystemCoreClock variable (HCLK) */
 	/* At reset, system core clock is set to 16 MHz from HSI */
 	SystemCoreClock = 16000000;
@@ -38,11 +42,15 @@ static int stm32g4_init(void)
 	LL_DBGMCU_EnableDBGSleepMode();
 
 #if defined(PWR_CR3_UCPD_DBDIS)
-	/* Disable USB Type-C dead battery pull-down behavior */
-	LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_PWR);
-	LL_PWR_DisableUCPDDeadBattery();
-#endif /* PWR_CR3_UCPD_DBDIS */
-	return 0;
-}
+	if (IS_ENABLED(CONFIG_DT_HAS_ST_STM32_UCPD_ENABLED) ||
+		!IS_ENABLED(CONFIG_USB_DEVICE_DRIVER)) {
+		/* Disable USB Type-C dead battery pull-down behavior */
+		LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_PWR);
+		LL_PWR_DisableUCPDDeadBattery();
+	}
 
-SYS_INIT(stm32g4_init, PRE_KERNEL_1, 0);
+#endif /* PWR_CR3_UCPD_DBDIS */
+#if CONFIG_PM
+	stm32_power_init();
+#endif
+}

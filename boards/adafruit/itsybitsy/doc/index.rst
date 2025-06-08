@@ -1,7 +1,4 @@
-.. _adafruit_itsybitsy_nrf52840:
-
-Adafruit ItsyBitsy nRF52840
-###########################
+.. zephyr:board:: adafruit_itsybitsy
 
 Overview
 ********
@@ -29,10 +26,6 @@ This development kit has the following features:
 * :abbr:`USB (Universal Serial Bus)`
 * :abbr:`WDT (Watchdog Timer)`
 
-.. image:: img/adafruit_itsybitsy_nrf52840.jpeg
-     :align: center
-     :alt: Adafruit ItsyBitsy nRF52840 Express
-
 Hardware
 ********
 - nRF52840 ARM Cortex-M4F CPU at 64MHz
@@ -47,45 +40,7 @@ Hardware
 Supported Features
 ==================
 
-The Adafruit ItsyBitsy nRF52840 board configuration supports the
-following hardware features:
-
-+-----------+------------+----------------------+
-| Interface | Controller | Driver/Component     |
-+===========+============+======================+
-| ADC       | on-chip    | adc                  |
-+-----------+------------+----------------------+
-| CLOCK     | on-chip    | clock_control        |
-+-----------+------------+----------------------+
-| FLASH     | on-chip    | flash                |
-+-----------+------------+----------------------+
-| GPIO      | on-chip    | gpio                 |
-+-----------+------------+----------------------+
-| I2C       | on-chip    | i2c                  |
-+-----------+------------+----------------------+
-| MPU       | on-chip    | arch/arm             |
-+-----------+------------+----------------------+
-| NVIC      | on-chip    | arch/arm             |
-+-----------+------------+----------------------+
-| PWM       | on-chip    | pwm                  |
-+-----------+------------+----------------------+
-| QSPI(M)   | on-chip    | nor                  |
-+-----------+------------+----------------------+
-| RADIO     | on-chip    | Bluetooth,           |
-|           |            | ieee802154           |
-+-----------+------------+----------------------+
-| RTC       | on-chip    | system clock         |
-+-----------+------------+----------------------+
-| SPI       | on-chip    | spi                  |
-+-----------+------------+----------------------+
-| UARTE     | on-chip    | serial               |
-+-----------+------------+----------------------+
-| USB       | on-chip    | usb                  |
-+-----------+------------+----------------------+
-| WDT       | on-chip    | watchdog             |
-+-----------+------------+----------------------+
-
-Other hardware features have not been enabled yet for this board.
+.. zephyr:board-supported-hw::
 
 Connections and IOs
 ===================
@@ -123,7 +78,7 @@ The :zephyr:code-sample:`button` sample lets you test the buttons (switches) and
 The :zephyr:code-sample:`blinky` sample lets you test the red LED.
 
 The DotStar LED has been implemented as a SPI device and can be tested
-with the :zephyr:code-sample:`led-apa102` sample application.
+with the :zephyr:code-sample:`led-strip` sample application.
 
 You can build and flash the examples to make sure Zephyr is running correctly on
 your board. The button and LED definitions can be found in
@@ -131,6 +86,9 @@ your board. The button and LED definitions can be found in
 
 Programming and Debugging
 *************************
+
+.. zephyr:board-supported-runners::
+
 The ItsyBitsy ships with the BOSSA compatible UF2 bootloader.  The
 bootloader can be entered by quickly tapping the reset button twice.
 

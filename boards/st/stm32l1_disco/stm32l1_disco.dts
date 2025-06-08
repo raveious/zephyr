@@ -22,10 +22,12 @@
 
 	leds {
 		compatible = "gpio-leds";
+
 		green_led: ld3 {
 			gpios = <&gpiob 7 GPIO_ACTIVE_HIGH>;
 			label = "User LD3";
 		};
+
 		blue_led: ld4 {
 			gpios = <&gpiob 6 GPIO_ACTIVE_HIGH>;
 			label = "User LD4";
@@ -34,6 +36,7 @@
 
 	gpio_keys {
 		compatible = "gpio-keys";
+
 		user_button: button {
 			label = "User";
 			gpios = <&gpioa 0 GPIO_ACTIVE_LOW>;
@@ -45,6 +48,8 @@
 		led0 = &green_led;
 		led1 = &blue_led;
 		sw0 = &user_button;
+		eeprom-0 = &eeprom;
+		watchdog0 = &iwdg;
 	};
 };
 
@@ -129,4 +134,12 @@
 	backup_regs {
 		status = "okay";
 	};
+};
+
+&eeprom {
+		status = "okay";
+};
+
+&iwdg {
+		status = "okay";
 };

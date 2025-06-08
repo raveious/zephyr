@@ -136,6 +136,8 @@ Keeping Zephyr updated
 To update the Zephyr project source code, you need to get the latest
 changes via ``git``. Afterwards, run ``west update`` as mentioned in
 the previous paragraph.
+Additionally, in the case of updated or added Python dependencies, running
+``west packages pip --install`` will make sure these are up-to-date.
 
 .. code-block:: console
 
@@ -143,6 +145,7 @@ the previous paragraph.
    cd zephyrproject/zephyr
    git pull
    west update
+   west packages pip --install
 
 Export Zephyr CMake package
 ***************************
@@ -203,7 +206,7 @@ a list of supported boards.
 #. Build the blinky sample for the ``reel_board``:
 
    .. zephyr-app-commands::
-      :app: samples/basic/blinky
+      :zephyr-app: samples/basic/blinky
       :board: reel_board
       :goals: build
 
@@ -213,7 +216,7 @@ format. Other binary formats, disassembly, and map files may be present
 depending on your board.
 
 The other sample applications in the :zephyr_file:`samples` folder are
-documented in :ref:`samples-and-demos`.
+documented in :zephyr:code-sample-category:`samples`.
 
 .. note:: If you want to reuse an
    existing build directory for another board or application, you need to
@@ -286,7 +289,7 @@ To enable QEMU in Test Runner (Twister) on Windows,
 :ref:`set the environment variable <env_vars>`
 ``QEMU_BIN_PATH`` to the path of QEMU installation folder.
 
-For example, you can build and run the :ref:`hello_world` sample using
+For example, you can build and run the :zephyr:code-sample:`hello_world` sample using
 the x86 emulation board configuration (``qemu_x86``), with:
 
 .. zephyr-app-commands::
@@ -306,7 +309,7 @@ Run a Sample Application natively (Linux)
 
 You can compile some samples to run as host programs
 on Linux. See :ref:`native_sim` for more information. On 64-bit host operating systems, you
-need to install a 32-bit C library, or build targeting :ref:`native_sim_64 <native_sim32_64>`.
+need to install a 32-bit C library, or build targeting :ref:`native_sim/native/64<native_sim32_64>`.
 
 First, build Hello World for ``native_sim``.
 

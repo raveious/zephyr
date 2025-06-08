@@ -98,6 +98,12 @@ config SOC_ESP32_WROVER_E_N16R2
 	help
 	  ESP32_WROVER_E_N16R2
 
+config SOC_ESP32_WROVER_E_N16R4
+	bool
+	select SOC_ESP32
+	help
+	  ESP32_WROVER_E_N16R4
+
 config SOC_ESP32_WROVER_E_N4R8
 	bool
 	select SOC_ESP32
@@ -122,6 +128,16 @@ config SOC_ESP32
 	help
 	  ESP32
 
+config SOC_ESP32_PROCPU
+	bool
+	help
+	  This hidden configuration defines that build is targeted for PROCPU (core 0).
+
+config SOC_ESP32_APPCPU
+	bool
+	help
+	  This hidden configuration defines that build is targeted for APPCPU (core 1).
+
 config SOC_SERIES
 	default "esp32" if SOC_SERIES_ESP32
 
@@ -144,6 +160,7 @@ config SOC_PART_NUMBER
 	default "ESP32_WROVER_E_N4R2" if SOC_ESP32_WROVER_E_N4R2
 	default "ESP32_WROVER_E_N8R2" if SOC_ESP32_WROVER_E_N8R2
 	default "ESP32_WROVER_E_N16R2" if SOC_ESP32_WROVER_E_N16R2
+	default "ESP32_WROVER_E_N16R4" if SOC_ESP32_WROVER_E_N16R4
 	default "ESP32_WROVER_E_N4R8" if SOC_ESP32_WROVER_E_N4R8
 	default "ESP32_WROVER_E_N8R8" if SOC_ESP32_WROVER_E_N8R8
 	default "ESP32_WROVER_E_N16R8" if SOC_ESP32_WROVER_E_N16R8

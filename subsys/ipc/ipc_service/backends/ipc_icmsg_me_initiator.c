@@ -184,18 +184,19 @@ static int backend_init(const struct device *instance)
 
 #define DEFINE_BACKEND_DEVICE(i)						\
 	static const struct icmsg_config_t backend_config_##i = {		\
-		.mbox_tx = MBOX_DT_CHANNEL_GET(DT_DRV_INST(i), tx),		\
-		.mbox_rx = MBOX_DT_CHANNEL_GET(DT_DRV_INST(i), rx),		\
+		.mbox_tx = MBOX_DT_SPEC_INST_GET(i, tx),			\
+		.mbox_rx = MBOX_DT_SPEC_INST_GET(i, rx),			\
+		.unbound_mode = ICMSG_UNBOUND_MODE_DISABLE,			\
 	};									\
 										\
 	PBUF_DEFINE(tx_pb_##i,							\
 			DT_REG_ADDR(DT_INST_PHANDLE(i, tx_region)),		\
 			DT_REG_SIZE(DT_INST_PHANDLE(i, tx_region)),		\
-			DT_INST_PROP_OR(i, dcache_alignment, 0));		\
+			DT_INST_PROP_OR(i, dcache_alignment, 0), 0, 0);		\
 	PBUF_DEFINE(rx_pb_##i,							\
 			DT_REG_ADDR(DT_INST_PHANDLE(i, rx_region)),		\
 			DT_REG_SIZE(DT_INST_PHANDLE(i, rx_region)),		\
-			DT_INST_PROP_OR(i, dcache_alignment, 0));		\
+			DT_INST_PROP_OR(i, dcache_alignment, 0), 0, 0);		\
 										\
 	static struct backend_data_t backend_data_##i = {			\
 		.icmsg_me_data = {						\

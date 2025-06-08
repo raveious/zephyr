@@ -47,8 +47,8 @@ LOG_MODULE_REGISTER(soc);
 
 #define ALL_USED_INT_LEVELS_MASK (L2_INTERRUPT_MASK | L3_INTERRUPT_MASK)
 
-/*
- * @biref FW entry point called by ROM during normal boot flow
+/**
+ * @brief FW entry point called by ROM during normal boot flow
  */
 extern void rom_entry(void);
 void mp_resume_entry(void);
@@ -58,6 +58,7 @@ struct core_state {
 	uint32_t a1;
 	uint32_t excsave2;
 	uint32_t intenable;
+	uint32_t ps;
 };
 
 static struct core_state core_desc[CONFIG_MP_MAX_NUM_CPUS] = {{0}};
@@ -83,6 +84,7 @@ static ALWAYS_INLINE void _save_core_context(void)
 {
 	uint32_t core_id = arch_proc_id();
 
+	core_desc[core_id].ps = XTENSA_RSR("PS");
 	core_desc[core_id].excsave2 = XTENSA_RSR(ZSR_CPU_STR);
 	__asm__ volatile("mov %0, a0" : "=r"(core_desc[core_id].a0));
 	__asm__ volatile("mov %0, a1" : "=r"(core_desc[core_id].a1));
@@ -93,13 +95,14 @@ static ALWAYS_INLINE void _restore_core_context(void)
 {
 	uint32_t core_id = arch_proc_id();
 
+	XTENSA_WSR("PS", core_desc[core_id].ps);
 	XTENSA_WSR(ZSR_CPU_STR, core_desc[core_id].excsave2);
 	__asm__ volatile("mov a0, %0" :: "r"(core_desc[core_id].a0));
 	__asm__ volatile("mov a1, %0" :: "r"(core_desc[core_id].a1));
 	__asm__ volatile("rsync");
 }
 
-void power_gate_exit(void)
+static void __used power_gate_exit(void)
 {
 	cpu_early_init();
 	sys_cache_data_flush_and_invd_all();
@@ -156,8 +159,9 @@ void pm_state_set(enum pm_state state, uint8_t substate_id)
 
 #ifdef CONFIG_ADSP_POWER_DOWN_HPSRAM
 			/* turn off all HPSRAM banks - get a full bitmap */
-			for (int i = 0; i < HPSRAM_SEGMENTS; i++)
+			for (int i = 0; i < HPSRAM_SEGMENTS; i++) {
 				hpsram_mask[i] = HPSRAM_MEMMASK(i);
+			}
 #endif /* CONFIG_ADSP_POWER_DOWN_HPSRAM */
 			/* do power down - this function won't return */
 			power_down_cavs(true, uncache_to_cache(&hpsram_mask[0]));
@@ -191,7 +195,7 @@ void pm_state_exit_post_ops(enum pm_state state, uint8_t substate_id)
 }
 #endif /* CONFIG_PM */
 
-#ifdef CONFIG_ARCH_CPU_IDLE_CUSTOM
+#ifdef CONFIG_ARCH_HAS_CUSTOM_CPU_IDLE
 /* xt-clang removes any NOPs more than 8. So we need to set
  * no optimization to avoid those NOPs from being removed.
  *

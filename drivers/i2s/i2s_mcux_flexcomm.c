@@ -449,7 +449,7 @@ static void i2s_mcux_config_dma_blocks(const struct device *dev,
 	LOG_DBG("channel_direction is %d", stream->dma_cfg.channel_direction);
 	LOG_DBG("complete_callback_en is %d",
 		stream->dma_cfg.complete_callback_en);
-	LOG_DBG("error_callback_en is %d", stream->dma_cfg.error_callback_en);
+	LOG_DBG("error_callback_dis is %d", stream->dma_cfg.error_callback_dis);
 	LOG_DBG("source_handshake is %d", stream->dma_cfg.source_handshake);
 	LOG_DBG("dest_handshake is %d", stream->dma_cfg.dest_handshake);
 	LOG_DBG("channel_priority is %d", stream->dma_cfg.channel_priority);
@@ -851,7 +851,7 @@ static int i2s_mcux_write(const struct device *dev, void *mem_block,
 	return ret;
 }
 
-static const struct i2s_driver_api i2s_mcux_driver_api = {
+static DEVICE_API(i2s, i2s_mcux_driver_api) = {
 	.configure = i2s_mcux_configure,
 	.config_get = i2s_mcux_config_get,
 	.read = i2s_mcux_read,

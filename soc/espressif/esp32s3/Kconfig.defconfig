@@ -3,22 +3,16 @@
 
 if SOC_SERIES_ESP32S3
 
-config MINIMAL_LIBC_OPTIMIZE_STRING_FOR_SIZE
-	default n
-
-config SYS_CLOCK_HW_CYCLES_PER_SEC
-	default $(dt_node_int_prop_int,/cpus/cpu@0,clock-frequency)
-
-config XTENSA_CCOUNT_HZ
-	default SYS_CLOCK_HW_CYCLES_PER_SEC
-
-config ESPTOOLPY_FLASHFREQ_80M
-	default y
-
 config FLASH_SIZE
 	default $(dt_node_reg_size_int,/soc/flash-controller@60002000/flash@0,0)
 
 config FLASH_BASE_ADDRESS
 	default $(dt_node_reg_addr_hex,/soc/flash-controller@60002000/flash@0)
+
+config BOOTLOADER_MCUBOOT
+	default y if SOC_ESP32S3_APPCPU
+
+config MAIN_STACK_SIZE
+	default 4096
 
 endif # SOC_SERIES_ESP32S3

@@ -14,7 +14,7 @@
 #include <zephyr/sys/util.h>
 #include <zephyr/sys/byteorder.h>
 
-#include <zephyr/net/buf.h>
+#include <zephyr/net_buf.h>
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/conn.h>
 #include <zephyr/bluetooth/mesh.h>
@@ -102,12 +102,12 @@ void bt_mesh_rpl_update(struct bt_mesh_rpl *rpl,
 }
 
 /* Check the Replay Protection List for a replay attempt. If non-NULL match
- * parameter is given the RPL slot is returned but it is not immediately
- * updated (needed for segmented messages), whereas if a NULL match is given
- * the RPL is immediately updated (used for unsegmented messages).
+ * parameter is given the RPL slot is returned, but it is not immediately
+ * updated. This is used to prevent storing data in RPL that has been rejected
+ * by upper logic (access, transport commands) and for receiving the segmented messages.
+ * If a NULL match is given the RPL is immediately updated (used for proxy configuration).
  */
-bool bt_mesh_rpl_check(struct bt_mesh_net_rx *rx,
-		struct bt_mesh_rpl **match)
+bool bt_mesh_rpl_check(struct bt_mesh_net_rx *rx, struct bt_mesh_rpl **match, bool bridge)
 {
 	struct bt_mesh_rpl *rpl;
 	int i;
@@ -117,8 +117,8 @@ bool bt_mesh_rpl_check(struct bt_mesh_net_rx *rx,
 		return false;
 	}
 
-	/* The RPL is used only for the local node */
-	if (!rx->local_match) {
+	/* The RPL is used only for the local node or Subnet Bridge. */
+	if (!rx->local_match && !bridge) {
 		return false;
 	}
 
@@ -403,4 +403,9 @@ void bt_mesh_rpl_pending_store(uint16_t addr)
 	if (addr == BT_MESH_ADDR_ALL_NODES) {
 		(void)memset(&replay_list[last - shift + 1], 0, sizeof(struct bt_mesh_rpl) * shift);
 	}
+}
+
+void bt_mesh_rpl_pending_store_all_nodes(void)
+{
+	bt_mesh_rpl_pending_store(BT_MESH_ADDR_ALL_NODES);
 }

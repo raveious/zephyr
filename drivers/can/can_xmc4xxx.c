@@ -156,8 +156,6 @@ static int can_xmc4xxx_send(const struct device *dev, const struct can_frame *ms
 		msg->flags & CAN_FRAME_FDF ? "FD frame" : "",
 		msg->flags & CAN_FRAME_BRS ? "BRS" : "");
 
-	__ASSERT_NO_MSG(callback != NULL);
-
 	if (msg->dlc > CAN_XMC4XXX_MAX_DLC) {
 		return -EINVAL;
 	}
@@ -871,7 +869,7 @@ static int can_xmc4xxx_init(const struct device *dev)
 	}
 #endif
 
-	ret = can_calc_timing(dev, &timing, dev_cfg->common.bus_speed,
+	ret = can_calc_timing(dev, &timing, dev_cfg->common.bitrate,
 			      dev_cfg->common.sample_point);
 	if (ret < 0) {
 		return ret;
@@ -884,7 +882,7 @@ static int can_xmc4xxx_init(const struct device *dev)
 	return can_set_timing(dev, &timing);
 }
 
-static const struct can_driver_api can_xmc4xxx_api_funcs = {
+static DEVICE_API(can, can_xmc4xxx_api_funcs) = {
 	.get_capabilities = can_xmc4xxx_get_capabilities,
 	.set_mode = can_xmc4xxx_set_mode,
 	.set_timing = can_xmc4xxx_set_timing,
@@ -925,7 +923,7 @@ static const struct can_driver_api can_xmc4xxx_api_funcs = {
                                                                                                    \
 	static struct can_xmc4xxx_data can_xmc4xxx_data_##inst;                                    \
 	static const struct can_xmc4xxx_config can_xmc4xxx_config_##inst = {                       \
-		.common = CAN_DT_DRIVER_CONFIG_INST_GET(inst, 1000000),                            \
+		.common = CAN_DT_DRIVER_CONFIG_INST_GET(inst, 0, 1000000),                         \
 		.can = (CAN_NODE_TypeDef *)DT_INST_REG_ADDR(inst),                                 \
 		.clock_div8 = DT_INST_PROP(inst, clock_div8),                                      \
 		.irq_config_func = can_xmc4xxx_irq_config_##inst,                                  \

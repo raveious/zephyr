@@ -219,6 +219,8 @@ int intel_adsp_hda_dma_status(const struct device *dev, uint32_t channel,
 	struct dma_status *stat)
 {
 	const struct intel_adsp_hda_dma_cfg *const cfg = dev->config;
+	uint32_t llp_l = 0;
+	uint32_t llp_u = 0;
 	bool xrun_det;
 
 	__ASSERT(channel < cfg->dma_channels, "Channel does not exist");
@@ -232,6 +234,22 @@ int intel_adsp_hda_dma_status(const struct device *dev, uint32_t channel,
 	stat->read_position = *DGBRP(cfg->base, cfg->regblock_size, channel);
 	stat->pending_length = used;
 	stat->free = unused;
+
+#if CONFIG_SOC_INTEL_ACE20_LNL || CONFIG_SOC_INTEL_ACE30
+	/* Linear Link Position via HDA-DMA is only supported on ACE2 or newer */
+	if (cfg->direction == MEMORY_TO_PERIPHERAL || cfg->direction == PERIPHERAL_TO_MEMORY) {
+		uint32_t tmp;
+
+		tmp = *DGLLLPL(cfg->base, cfg->regblock_size, channel);
+		llp_u = *DGLLLPU(cfg->base, cfg->regblock_size, channel);
+		llp_l = *DGLLLPL(cfg->base, cfg->regblock_size, channel);
+		if (tmp > llp_l) {
+			/* re-read the LLPU value, as LLPL just wrapped */
+			llp_u = *DGLLLPU(cfg->base, cfg->regblock_size, channel);
+		}
+	}
+#endif
+	stat->total_copied = ((uint64_t)llp_u << 32) | llp_l;
 
 	switch (cfg->direction) {
 	case MEMORY_TO_PERIPHERAL:
@@ -341,6 +359,17 @@ int intel_adsp_hda_dma_stop(const struct device *dev, uint32_t channel)
 	return pm_device_runtime_put(dev);
 }
 
+static void intel_adsp_hda_enable_irqs(const struct device *dev)
+{
+#if CONFIG_DMA_INTEL_ADSP_HDA_TIMING_L1_EXIT
+	const struct intel_adsp_hda_dma_cfg *const cfg = dev->config;
+
+	if (cfg->irq_config) {
+		cfg->irq_config();
+	}
+#endif
+}
+
 static void intel_adsp_hda_channels_init(const struct device *dev)
 {
 	const struct intel_adsp_hda_dma_cfg *const cfg = dev->config;
@@ -357,12 +386,24 @@ static void intel_adsp_hda_channels_init(const struct device *dev)
 		}
 	}
 
-#if CONFIG_DMA_INTEL_ADSP_HDA_TIMING_L1_EXIT
-	/* Configure interrupts */
-	if (cfg->irq_config) {
-		cfg->irq_config();
+	intel_adsp_hda_enable_irqs(dev);
+}
+
+int intel_adsp_hda_dma_pm_action(const struct device *dev, enum pm_device_action action)
+{
+	switch (action) {
+	case PM_DEVICE_ACTION_RESUME:
+		intel_adsp_hda_enable_irqs(dev);
+		break;
+	case PM_DEVICE_ACTION_SUSPEND:
+	case PM_DEVICE_ACTION_TURN_ON:
+	case PM_DEVICE_ACTION_TURN_OFF:
+		break;
+	default:
+		return -ENOTSUP;
 	}
-#endif
+
+	return 0;
 }
 
 int intel_adsp_hda_dma_init(const struct device *dev)
@@ -373,19 +414,8 @@ int intel_adsp_hda_dma_init(const struct device *dev)
 	data->ctx.dma_channels = cfg->dma_channels;
 	data->ctx.atomic = data->channels_atomic;
 	data->ctx.magic = DMA_MAGIC;
-#ifdef CONFIG_PM_DEVICE_RUNTIME
-	if (pm_device_on_power_domain(dev)) {
-		pm_device_init_off(dev);
-	} else {
-		intel_adsp_hda_channels_init(dev);
-		pm_device_init_suspended(dev);
-	}
-
-	return pm_device_runtime_enable(dev);
-#else
 	intel_adsp_hda_channels_init(dev);
-	return 0;
-#endif
+	return pm_device_driver_init(dev, intel_adsp_hda_dma_pm_action);
 }
 
 int intel_adsp_hda_dma_get_attribute(const struct device *dev, uint32_t type, uint32_t *value)
@@ -412,25 +442,6 @@ int intel_adsp_hda_dma_get_attribute(const struct device *dev, uint32_t type, ui
 	return 0;
 }
 
-#ifdef CONFIG_PM_DEVICE
-int intel_adsp_hda_dma_pm_action(const struct device *dev, enum pm_device_action action)
-{
-	switch (action) {
-	case PM_DEVICE_ACTION_RESUME:
-		intel_adsp_hda_channels_init(dev);
-		break;
-	case PM_DEVICE_ACTION_SUSPEND:
-	case PM_DEVICE_ACTION_TURN_ON:
-	case PM_DEVICE_ACTION_TURN_OFF:
-		break;
-	default:
-		return -ENOTSUP;
-	}
-
-	return 0;
-}
-#endif
-
 #define DEVICE_DT_GET_AND_COMMA(node_id) DEVICE_DT_GET(node_id),
 
 void intel_adsp_hda_dma_isr(void)
@@ -438,8 +449,10 @@ void intel_adsp_hda_dma_isr(void)
 #if CONFIG_DMA_INTEL_ADSP_HDA_TIMING_L1_EXIT
 	struct dma_context *dma_ctx;
 	const struct intel_adsp_hda_dma_cfg *cfg;
-	bool clear_l1_exit = false;
+	bool triggered_interrupts = false;
 	int i, j;
+	int expected_interrupts = 0;
+	atomic_val_t enabled_chs;
 	const struct device *host_dev[] = {
 #if CONFIG_DMA_INTEL_ADSP_HDA_HOST_OUT
 		DT_FOREACH_STATUS_OKAY(intel_adsp_hda_host_out, DEVICE_DT_GET_AND_COMMA)
@@ -449,25 +462,47 @@ void intel_adsp_hda_dma_isr(void)
 #endif
 	};
 
+	/*
+	 * To initiate transfer, DSP must be in L0 state. Once the transfer is started, DSP can go
+	 * to the low power L1 state, and the transfer will be able to continue and finish in L1
+	 * state. Interrupts are configured to trigger after the first 32 bytes of data arrive.
+	 * Once such an interrupt arrives, the transfer has already started. If all expected
+	 * transfers have started, it is safe to allow the low power L1 state.
+	 */
+
 	for (i = 0; i < ARRAY_SIZE(host_dev); i++) {
 		dma_ctx = (struct dma_context *)host_dev[i]->data;
 		cfg = host_dev[i]->config;
+		enabled_chs = atomic_get(dma_ctx->atomic);
+		for (j = 0; enabled_chs && j < dma_ctx->dma_channels; j++) {
+			if (!(enabled_chs & BIT(j))) {
+				continue;
+			}
+			enabled_chs &= ~(BIT(j));
 
-		for (j = 0; j < dma_ctx->dma_channels; j++) {
-			if (atomic_test_bit(dma_ctx->atomic, j)) {
-				clear_l1_exit |=
-					intel_adsp_hda_check_buffer_interrupt(cfg->base,
-									      cfg->regblock_size,
-									      j);
+			if (!intel_adsp_hda_is_buffer_interrupt_enabled(cfg->base,
+									cfg->regblock_size, j)) {
+				continue;
+			}
+
+			if (intel_adsp_hda_check_buffer_interrupt(cfg->base,
+								  cfg->regblock_size, j)) {
+				triggered_interrupts = true;
 				intel_adsp_hda_disable_buffer_interrupt(cfg->base,
 									cfg->regblock_size, j);
 				intel_adsp_hda_clear_buffer_interrupt(cfg->base,
 								      cfg->regblock_size, j);
+			} else {
+				expected_interrupts++;
 			}
 		}
 	}
 
-	if (clear_l1_exit) {
+	/*
+	 * Allow entering low power L1 state only after all enabled interrupts arrived, i.e.,
+	 * transfers started on all channels.
+	 */
+	if (triggered_interrupts && expected_interrupts == 0) {
 		intel_adsp_allow_dmi_l1_state();
 	}
 #endif

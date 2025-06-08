@@ -49,12 +49,14 @@
 			test_i2c_ads1014: ads1014@1 {
 				compatible = "ti,ads1014";
 				reg = <0x1>;
+				alert-rdy-gpios = <&test_gpio 0 0>;
 				#io-channel-cells = <1>;
 			};
 
 			test_i2c_ads1015: ads1015@2 {
 				compatible = "ti,ads1015";
 				reg = <0x2>;
+				alert-rdy-gpios = <&test_gpio 0 0>;
 				#io-channel-cells = <1>;
 			};
 
@@ -67,12 +69,14 @@
 			test_i2c_ads1114: ads1114@4 {
 				compatible = "ti,ads1114";
 				reg = <0x4>;
+				alert-rdy-gpios = <&test_gpio 0 0>;
 				#io-channel-cells = <1>;
 			};
 
 			test_i2c_ads1115: ads1115@5 {
 				compatible = "ti,ads1115";
 				reg = <0x5>;
+				alert-rdy-gpios = <&test_gpio 0 0>;
 				#io-channel-cells = <1>;
 			};
 
@@ -80,7 +84,7 @@
 				compatible = "ti,ads1119";
 				reg = <0x6>;
 				#io-channel-cells = <1>;
-  			};
+			};
 
 			test_i2c_ads1112: ads1112@7 {
 				compatible = "ti,ads1112";
@@ -92,6 +96,37 @@
 				compatible = "lltc,ltc2451";
 				reg = <0x8>;
 				conversion-speed = <60>;
+				#io-channel-cells = <1>;
+			};
+
+			test_i2c_ad559x: ad559x@9 {
+				compatible = "adi,ad559x";
+				status = "okay";
+				reg = <0x9>;
+				#io-channel-cells = <1>;
+				reset-gpios = <&test_gpio 0 0>;
+
+				test_i2c_ad559x_adc: adc-controller {
+					compatible = "adi,ad559x-adc";
+					#io-channel-cells = <1>;
+				};
+			};
+
+			test_i2c_tla2021: tla2021@a {
+				compatible = "ti,tla2021";
+				reg = <0xa>;
+				#io-channel-cells = <1>;
+			};
+
+			test_i2c_tla2022: tla2022@b {
+				compatible = "ti,tla2022";
+				reg = <0xb>;
+				#io-channel-cells = <1>;
+			};
+
+			test_i2c_tla2024: tla2024@c {
+				compatible = "ti,tla2024";
+				reg = <0xc>;
 				#io-channel-cells = <1>;
 			};
 		};
@@ -106,6 +141,9 @@
 
 			/* one entry for every devices at spi.dtsi */
 			cs-gpios = <&test_gpio 0 0>,
+				   <&test_gpio 0 0>,
+				   <&test_gpio 0 0>,
+				   <&test_gpio 0 0>,
 				   <&test_gpio 0 0>,
 				   <&test_gpio 0 0>,
 				   <&test_gpio 0 0>,
@@ -237,9 +275,9 @@
 			};
 
 
-			test_spi_ads114s08: ads114s08@9 {
+			test_spi_ads114s08: ads114s08@c {
 				compatible = "ti,ads114s08";
-				reg = <0x9>;
+				reg = <0xc>;
 				spi-max-frequency = <0>;
 				#io-channel-cells = <1>;
 				reset-gpios = <&test_gpio 0 0>;
@@ -247,84 +285,119 @@
 				start-sync-gpios = <&test_gpio 0 0>;
 			};
 
-			test_spi_max11102: max11102@a {
+			test_spi_max11102: max11102@d {
 				compatible = "maxim,max11102";
-				reg = <0xa>;
-				spi-max-frequency = <0>;
-				#io-channel-cells = <1>;
-				chsel-gpios = <&test_gpio 0 0>;
-			};
-
-			test_spi_max11103: max11103@b {
-				compatible = "maxim,max11103";
-				reg = <0xb>;
-				spi-max-frequency = <0>;
-				#io-channel-cells = <1>;
-				chsel-gpios = <&test_gpio 0 0>;
-			};
-
-			test_spi_max11105: max11105@c {
-				compatible = "maxim,max11105";
-				reg = <0xc>;
-				spi-max-frequency = <0>;
-				#io-channel-cells = <1>;
-			};
-
-			test_spi_max11106: max11106@d {
-				compatible = "maxim,max11106";
 				reg = <0xd>;
 				spi-max-frequency = <0>;
 				#io-channel-cells = <1>;
 				chsel-gpios = <&test_gpio 0 0>;
 			};
 
-			test_spi_max11110: max11110@e {
-				compatible = "maxim,max11110";
+			test_spi_max11103: max11103@e {
+				compatible = "maxim,max11103";
 				reg = <0xe>;
-				spi-max-frequency = <0>;
-				#io-channel-cells = <1>;
-			};
-
-			test_spi_max11111: max11111@f {
-				compatible = "maxim,max11111";
-				reg = <0xf>;
 				spi-max-frequency = <0>;
 				#io-channel-cells = <1>;
 				chsel-gpios = <&test_gpio 0 0>;
 			};
 
-			test_spi_max11115: max11115@10 {
-				compatible = "maxim,max11115";
-				reg = <0x10>;
+			test_spi_max11105: max11105@f {
+				compatible = "maxim,max11105";
+				reg = <0xf>;
 				spi-max-frequency = <0>;
 				#io-channel-cells = <1>;
 			};
 
-			test_spi_max11116: max11116@11 {
-				compatible = "maxim,max11116";
+			test_spi_max11106: max11106@10 {
+				compatible = "maxim,max11106";
+				reg = <0x10>;
+				spi-max-frequency = <0>;
+				#io-channel-cells = <1>;
+				chsel-gpios = <&test_gpio 0 0>;
+			};
+
+			test_spi_max11110: max11110@11 {
+				compatible = "maxim,max11110";
 				reg = <0x11>;
 				spi-max-frequency = <0>;
 				#io-channel-cells = <1>;
 			};
 
-			test_spi_max11117: max11117@12 {
-				compatible = "maxim,max11117";
+			test_spi_max11111: max11111@12 {
+				compatible = "maxim,max11111";
 				reg = <0x12>;
+				spi-max-frequency = <0>;
+				#io-channel-cells = <1>;
+				chsel-gpios = <&test_gpio 0 0>;
+			};
+
+			test_spi_max11115: max11115@13 {
+				compatible = "maxim,max11115";
+				reg = <0x13>;
 				spi-max-frequency = <0>;
 				#io-channel-cells = <1>;
 			};
 
-			test_spi_ad5592: ad5592@13 {
-				compatible = "adi,ad5592";
+			test_spi_max11116: max11116@14 {
+				compatible = "maxim,max11116";
+				reg = <0x14>;
+				spi-max-frequency = <0>;
+				#io-channel-cells = <1>;
+			};
+
+			test_spi_max11117: max11117@15 {
+				compatible = "maxim,max11117";
+				reg = <0x15>;
+				spi-max-frequency = <0>;
+				#io-channel-cells = <1>;
+			};
+
+			test_spi_ad559x: ad559x@16 {
+				compatible = "adi,ad559x";
 				status = "okay";
-				reg = <0x13>;
+				reg = <0x16>;
 				spi-max-frequency = <0>;
 				reset-gpios = <&test_gpio 0 0>;
 
-				ad5592_adc: adc-controller {
-					compatible = "adi,ad5592-adc";
+				test_spi_ad559x_adc: adc-controller {
+					compatible = "adi,ad559x-adc";
 					#io-channel-cells = <1>;
 				};
+			};
+
+			test_spi_ads131m02: ads131m02@17 {
+				compatible = "ti,ads131m02";
+				reg = <0x17>;
+				spi-max-frequency = <0>;
+				#io-channel-cells = <1>;
+				drdy-gpios = <&test_gpio 0 0>;
+			};
+
+			test_spi_ad7124: ad7124@18 {
+				compatible = "adi,ad7124-adc";
+				reg = <0x18>;
+				spi-max-frequency = <0>;
+				#io-channel-cells = <1>;
+				active-device = <1>;
+			};
+
+			test_spi_ad4130: ad41304@19 {
+				compatible = "adi,ad4130-adc";
+				reg = <0x19>;
+				spi-max-frequency = <0>;
+				#io-channel-cells = <1>;
+			};
+
+			test_spi_mcp356xr: mcp356xr@18 {
+				compatible = "microchip,mcp356xr";
+				reg = <0x1a>;
+				spi-max-frequency = <0>;
+				#io-channel-cells = <1>;
+
+				address = <1>;
+				analog-clock-prescaler = <0>;
+				boost-current-bias = <0>;
+				irq-gpios = <&test_gpio 0 0>;
 			};
 		};
 	};

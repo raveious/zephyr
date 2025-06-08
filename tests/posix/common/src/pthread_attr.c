@@ -33,7 +33,8 @@ static void *thread_entry(void *arg)
 	return NULL;
 }
 
-static void create_thread_common(const pthread_attr_t *attrp, bool expect_success, bool joinable)
+static void create_thread_common_entry(const pthread_attr_t *attrp, bool expect_success,
+				       bool joinable, void *(*entry)(void *arg), void *arg)
 {
 	pthread_t th;
 
@@ -42,9 +43,9 @@ static void create_thread_common(const pthread_attr_t *attrp, bool expect_succes
 	}
 
 	if (expect_success) {
-		zassert_ok(pthread_create(&th, attrp, thread_entry, UINT_TO_POINTER(joinable)));
+		zassert_ok(pthread_create(&th, attrp, entry, arg));
 	} else {
-		zassert_not_ok(pthread_create(&th, attrp, thread_entry, UINT_TO_POINTER(joinable)));
+		zassert_not_ok(pthread_create(&th, attrp, entry, arg));
 		return;
 	}
 
@@ -64,6 +65,12 @@ static void create_thread_common(const pthread_attr_t *attrp, bool expect_succes
 	}
 
 	zassert_true(detached_thread_has_finished, "detached thread did not seem to finish");
+}
+
+static void create_thread_common(const pthread_attr_t *attrp, bool expect_success, bool joinable)
+{
+	create_thread_common_entry(attrp, expect_success, joinable, thread_entry,
+				   UINT_TO_POINTER(joinable));
 }
 
 static inline void can_create_thread(const pthread_attr_t *attrp)
@@ -138,56 +145,6 @@ ZTEST(pthread_attr, test_pthread_attr_init_destroy)
 	can_create_thread(&attr);
 
 	/* note: attr is still valid and is destroyed in after() */
-}
-
-ZTEST(pthread_attr, test_pthread_attr_getguardsize)
-{
-	size_t guardsize;
-
-	/* degenerate cases */
-	{
-		if (false) {
-			/* undefined behaviour */
-			zassert_equal(pthread_attr_getguardsize(NULL, NULL), EINVAL);
-			zassert_equal(pthread_attr_getguardsize(NULL, &guardsize), EINVAL);
-			zassert_equal(pthread_attr_getguardsize(&uninit_attr, &guardsize), EINVAL);
-		}
-		zassert_equal(pthread_attr_getguardsize(&attr, NULL), EINVAL);
-	}
-
-	guardsize = BIOS_FOOD;
-	zassert_ok(pthread_attr_getguardsize(&attr, &guardsize));
-	zassert_not_equal(guardsize, BIOS_FOOD);
-}
-
-ZTEST(pthread_attr, test_pthread_attr_setguardsize)
-{
-	size_t guardsize = CONFIG_POSIX_PTHREAD_ATTR_GUARDSIZE_DEFAULT;
-	size_t sizes[] = {0, BIT_MASK(CONFIG_POSIX_PTHREAD_ATTR_GUARDSIZE_BITS / 2),
-			  BIT_MASK(CONFIG_POSIX_PTHREAD_ATTR_GUARDSIZE_BITS)};
-
-	/* valid value */
-	zassert_ok(pthread_attr_getguardsize(&attr, &guardsize));
-
-	/* degenerate cases */
-	{
-		if (false) {
-			/* undefined behaviour */
-			zassert_equal(pthread_attr_setguardsize(NULL, SIZE_MAX), EINVAL);
-			zassert_equal(pthread_attr_setguardsize(NULL, guardsize), EINVAL);
-			zassert_equal(pthread_attr_setguardsize((pthread_attr_t *)&uninit_attr,
-								guardsize),
-				      EINVAL);
-		}
-		zassert_equal(pthread_attr_setguardsize(&attr, SIZE_MAX), EINVAL);
-	}
-
-	ARRAY_FOR_EACH(sizes, i) {
-		zassert_ok(pthread_attr_setguardsize(&attr, sizes[i]));
-		guardsize = ~sizes[i];
-		zassert_ok(pthread_attr_getguardsize(&attr, &guardsize));
-		zassert_equal(guardsize, sizes[i]);
-	}
 }
 
 ZTEST(pthread_attr, test_pthread_attr_getschedparam)
@@ -280,163 +237,161 @@ ZTEST(pthread_attr, test_pthread_attr_setschedpolicy)
 	can_create_thread(&attr);
 }
 
-ZTEST(pthread_attr, test_pthread_attr_getstack)
+ZTEST(pthread_attr, test_pthread_attr_getscope)
 {
-	void *stackaddr = (void *)BIOS_FOOD;
-	size_t stacksize = BIOS_FOOD;
+	int contentionscope = BIOS_FOOD;
 
 	/* degenerate cases */
 	{
 		if (false) {
 			/* undefined behaviour */
-			zassert_equal(pthread_attr_getstack(NULL, NULL, NULL), EINVAL);
-			zassert_equal(pthread_attr_getstack(NULL, NULL, &stacksize), EINVAL);
-			zassert_equal(pthread_attr_getstack(NULL, &stackaddr, NULL), EINVAL);
-			zassert_equal(pthread_attr_getstack(NULL, &stackaddr, &stacksize), EINVAL);
-			zassert_equal(pthread_attr_getstack(&uninit_attr, &stackaddr, &stacksize),
+			zassert_equal(pthread_attr_getscope(NULL, NULL), EINVAL);
+			zassert_equal(pthread_attr_getscope(NULL, &contentionscope), EINVAL);
+			zassert_equal(pthread_attr_getscope(&uninit_attr, &contentionscope),
 				      EINVAL);
 		}
-		zassert_equal(pthread_attr_getstack(&attr, NULL, NULL), EINVAL);
-		zassert_equal(pthread_attr_getstack(&attr, NULL, &stacksize), EINVAL);
-		zassert_equal(pthread_attr_getstack(&attr, &stackaddr, NULL), EINVAL);
+		zassert_equal(pthread_attr_getscope(&attr, NULL), EINVAL);
 	}
 
-	zassert_ok(pthread_attr_getstack(&attr, &stackaddr, &stacksize));
-	zassert_not_equal(stackaddr, (void *)BIOS_FOOD);
-	zassert_not_equal(stacksize, BIOS_FOOD);
+	zassert_ok(pthread_attr_getscope(&attr, &contentionscope));
+	zassert_equal(contentionscope, PTHREAD_SCOPE_SYSTEM);
 }
 
-ZTEST(pthread_attr, test_pthread_attr_setstack)
+ZTEST(pthread_attr, test_pthread_attr_setscope)
 {
-	void *stackaddr;
-	size_t stacksize;
-	void *new_stackaddr;
-	size_t new_stacksize;
-
-	/* valid values */
-	zassert_ok(pthread_attr_getstack(&attr, &stackaddr, &stacksize));
+	int contentionscope = BIOS_FOOD;
 
 	/* degenerate cases */
 	{
 		if (false) {
 			/* undefined behaviour */
-			zassert_equal(pthread_attr_setstack(NULL, NULL, 0), EACCES);
-			zassert_equal(pthread_attr_setstack(NULL, NULL, stacksize), EINVAL);
-			zassert_equal(pthread_attr_setstack(NULL, stackaddr, 0), EINVAL);
-			zassert_equal(pthread_attr_setstack(NULL, stackaddr, stacksize), EINVAL);
-			zassert_equal(pthread_attr_setstack((pthread_attr_t *)&uninit_attr,
-							    stackaddr, stacksize),
+			zassert_equal(pthread_attr_setscope(NULL, PTHREAD_SCOPE_SYSTEM), EINVAL);
+			zassert_equal(pthread_attr_setscope(NULL, contentionscope), EINVAL);
+			zassert_equal(pthread_attr_setscope((pthread_attr_t *)&uninit_attr,
+							    contentionscope),
 				      EINVAL);
 		}
-		zassert_equal(pthread_attr_setstack(&attr, NULL, 0), EACCES);
-		zassert_equal(pthread_attr_setstack(&attr, NULL, stacksize), EACCES);
-		zassert_equal(pthread_attr_setstack(&attr, stackaddr, 0), EINVAL);
+		zassert_equal(pthread_attr_setscope(&attr, 3), EINVAL);
 	}
 
-	/* ensure we can create and join a thread with the default attrs */
-	can_create_thread(&attr);
+	zassert_equal(pthread_attr_setscope(&attr, PTHREAD_SCOPE_PROCESS), ENOTSUP);
+	zassert_ok(pthread_attr_setscope(&attr, PTHREAD_SCOPE_SYSTEM));
+	zassert_ok(pthread_attr_getscope(&attr, &contentionscope));
+	zassert_equal(contentionscope, PTHREAD_SCOPE_SYSTEM);
+}
 
-	/* set stack / addr to the current values of stack / addr */
-	zassert_ok(pthread_attr_setstack(&attr, stackaddr, stacksize));
-	can_create_thread(&attr);
+ZTEST(pthread_attr, test_pthread_attr_getinheritsched)
+{
+	int inheritsched = BIOS_FOOD;
 
-	/* qemu_x86 seems to be unable to set thread stacks to be anything less than 4096 */
-	if (!IS_ENABLED(CONFIG_X86)) {
+	/* degenerate cases */
+	{
+		if (false) {
+			/* undefined behaviour */
+			zassert_equal(pthread_attr_getinheritsched(NULL, NULL), EINVAL);
+			zassert_equal(pthread_attr_getinheritsched(NULL, &inheritsched), EINVAL);
+			zassert_equal(pthread_attr_getinheritsched(&uninit_attr, &inheritsched),
+				      EINVAL);
+		}
+		zassert_equal(pthread_attr_getinheritsched(&attr, NULL), EINVAL);
+	}
+
+	zassert_ok(pthread_attr_getinheritsched(&attr, &inheritsched));
+	zassert_equal(inheritsched, PTHREAD_INHERIT_SCHED);
+}
+
+static void *inheritsched_entry(void *arg)
+{
+	int prio;
+	int inheritsched;
+	int pprio = POINTER_TO_INT(arg);
+
+	zassert_ok(pthread_attr_getinheritsched(&attr, &inheritsched));
+
+	prio = k_thread_priority_get(k_current_get());
+
+	if (inheritsched == PTHREAD_INHERIT_SCHED) {
 		/*
-		 * check we can set a smaller stacksize
-		 * should not require dynamic reallocation
-		 * size may get rounded up to some alignment internally
+		 * There will be numerical overlap between posix priorities in different scheduler
+		 * policies so only check the Zephyr priority here. The posix policy and posix
+		 * priority are derived from the Zephyr priority in any case.
 		 */
-		zassert_ok(pthread_attr_setstack(&attr, stackaddr, stacksize - 1));
-		/* ensure we read back the same values as we specified */
-		zassert_ok(pthread_attr_getstack(&attr, &new_stackaddr, &new_stacksize));
-		zassert_equal(new_stackaddr, stackaddr);
-		zassert_equal(new_stacksize, stacksize - 1);
-		can_create_thread(&attr);
+		zassert_equal(prio, pprio, "actual priority: %d, expected priority: %d", prio,
+			      pprio);
+		return NULL;
 	}
 
-	if (IS_ENABLED(DYNAMIC_THREAD_ALLOC)) {
-		/* ensure we can set a dynamic stack */
-		k_thread_stack_t *stack;
+	/* inheritsched == PTHREAD_EXPLICIT_SCHED */
+	int act_prio;
+	int exp_prio;
+	int act_policy;
+	int exp_policy;
+	struct sched_param param;
 
-		stack = k_thread_stack_alloc(2 * stacksize, 0);
-		zassert_not_null(stack);
+	/* get the actual policy, param, etc */
+	zassert_ok(pthread_getschedparam(pthread_self(), &act_policy, &param));
+	act_prio = param.sched_priority;
 
-		zassert_ok(pthread_attr_setstack(&attr, (void *)stack, 2 * stacksize));
-		/* ensure we read back the same values as we specified */
-		zassert_ok(pthread_attr_getstack(&attr, &new_stackaddr, &new_stacksize));
-		zassert_equal(new_stackaddr, (void *)stack);
-		zassert_equal(new_stacksize, 2 * stacksize);
-		can_create_thread(&attr);
-	}
+	/* get the expected policy, param, etc */
+	zassert_ok(pthread_attr_getschedpolicy(&attr, &exp_policy));
+	zassert_ok(pthread_attr_getschedparam(&attr, &param));
+	exp_prio = param.sched_priority;
+
+	/* compare actual vs expected */
+	zassert_equal(act_policy, exp_policy, "actual policy: %d, expected policy: %d", act_policy,
+		      exp_policy);
+	zassert_equal(act_prio, exp_prio, "actual priority: %d, expected priority: %d", act_prio,
+		      exp_prio);
+
+	return NULL;
 }
 
-ZTEST(pthread_attr, test_pthread_attr_getstacksize)
+static void test_pthread_attr_setinheritsched_common(bool inheritsched)
 {
-	size_t stacksize = BIOS_FOOD;
+	int prio;
+	int policy;
+	struct sched_param param;
 
+	extern int zephyr_to_posix_priority(int priority, int *policy);
+
+	prio = k_thread_priority_get(k_current_get());
+	zassert_not_equal(prio, K_LOWEST_APPLICATION_THREAD_PRIO);
+
+	/*
+	 * values affected by inheritsched are policy / priority / contentionscope
+	 *
+	 * we only support PTHREAD_SCOPE_SYSTEM, so no need to set contentionscope
+	 */
+	prio = K_LOWEST_APPLICATION_THREAD_PRIO;
+	param.sched_priority = zephyr_to_posix_priority(prio, &policy);
+
+	zassert_ok(pthread_attr_setschedpolicy(&attr, policy));
+	zassert_ok(pthread_attr_setschedparam(&attr, &param));
+	zassert_ok(pthread_attr_setinheritsched(&attr, inheritsched));
+	create_thread_common_entry(&attr, true, true, inheritsched_entry,
+				   UINT_TO_POINTER(k_thread_priority_get(k_current_get())));
+}
+
+ZTEST(pthread_attr, test_pthread_attr_setinheritsched)
+{
 	/* degenerate cases */
 	{
 		if (false) {
 			/* undefined behaviour */
-			zassert_equal(pthread_attr_getstacksize(NULL, NULL), EINVAL);
-			zassert_equal(pthread_attr_getstacksize(NULL, &stacksize), EINVAL);
-			zassert_equal(pthread_attr_getstacksize(&uninit_attr, &stacksize), EINVAL);
-		}
-		zassert_equal(pthread_attr_getstacksize(&attr, NULL), EINVAL);
-	}
-
-	zassert_ok(pthread_attr_getstacksize(&attr, &stacksize));
-	zassert_not_equal(stacksize, BIOS_FOOD);
-}
-
-ZTEST(pthread_attr, test_pthread_attr_setstacksize)
-{
-	size_t stacksize;
-	size_t new_stacksize;
-
-	/* valid size */
-	zassert_ok(pthread_attr_getstacksize(&attr, &stacksize));
-
-	/* degenerate cases */
-	{
-		if (false) {
-			/* undefined behaviour */
-			zassert_equal(pthread_attr_setstacksize(NULL, 0), EINVAL);
-			zassert_equal(pthread_attr_setstacksize(NULL, stacksize), EINVAL);
-			zassert_equal(pthread_attr_setstacksize((pthread_attr_t *)&uninit_attr,
-								stacksize),
+			zassert_equal(pthread_attr_setinheritsched(NULL, PTHREAD_EXPLICIT_SCHED),
+				      EINVAL);
+			zassert_equal(pthread_attr_setinheritsched(NULL, PTHREAD_INHERIT_SCHED),
+				      EINVAL);
+			zassert_equal(pthread_attr_setinheritsched((pthread_attr_t *)&uninit_attr,
+								   PTHREAD_INHERIT_SCHED),
 				      EINVAL);
 		}
-		zassert_equal(pthread_attr_setstacksize(&attr, 0), EINVAL);
+		zassert_equal(pthread_attr_setinheritsched(&attr, 3), EINVAL);
 	}
 
-	/* ensure we can spin up a thread with the default stack size */
-	can_create_thread(&attr);
-
-	/* set stack / addr to the current values of stack / addr */
-	zassert_ok(pthread_attr_setstacksize(&attr, stacksize));
-	/* ensure we can read back the values we just set */
-	zassert_ok(pthread_attr_getstacksize(&attr, &new_stacksize));
-	zassert_equal(new_stacksize, stacksize);
-	can_create_thread(&attr);
-
-	/* qemu_x86 seems to be unable to set thread stacks to be anything less than 4096 */
-	if (!IS_ENABLED(CONFIG_X86)) {
-		zassert_ok(pthread_attr_setstacksize(&attr, stacksize - 1));
-		/* ensure we can read back the values we just set */
-		zassert_ok(pthread_attr_getstacksize(&attr, &new_stacksize));
-		zassert_equal(new_stacksize, stacksize - 1);
-		can_create_thread(&attr);
-	}
-
-	if (IS_ENABLED(CONFIG_DYNAMIC_THREAD_ALLOC)) {
-		zassert_ok(pthread_attr_setstacksize(&attr, 2 * stacksize));
-		/* ensure we read back the same values as we specified */
-		zassert_ok(pthread_attr_getstacksize(&attr, &new_stacksize));
-		zassert_equal(new_stacksize, 2 * stacksize);
-		can_create_thread(&attr);
-	}
+	/* valid cases */
+	test_pthread_attr_setinheritsched_common(PTHREAD_INHERIT_SCHED);
+	test_pthread_attr_setinheritsched_common(PTHREAD_EXPLICIT_SCHED);
 }
 
 ZTEST(pthread_attr, test_pthread_attr_large_stacksize)
@@ -558,7 +513,7 @@ ZTEST(pthread_attr, test_pthread_attr_policy_and_priority_limits)
 			zassert_not_equal(-1, param.sched_priority,
 					  "sched_get_priority_%s(%s) failed: %d",
 					  i == 0 ? "min" : "max", policy_names[policy], errno);
-			zassert_ok(errno, "sched_get_priority_%s(%s) set errno to %s",
+			zassert_ok(errno, "sched_get_priority_%s(%s) set errno to %d",
 				   i == 0 ? "min" : "max", policy_names[policy], errno);
 		}
 

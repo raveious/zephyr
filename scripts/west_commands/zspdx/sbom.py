@@ -6,15 +6,16 @@ import os
 
 from west import log
 
-from zspdx.walker import WalkerConfig, Walker
 from zspdx.scanner import ScannerConfig, scanDocument
+from zspdx.walker import Walker, WalkerConfig
 from zspdx.writer import writeSPDX
+
 
 # SBOMConfig contains settings that will be passed along to the various
 # SBOM maker subcomponents.
 class SBOMConfig:
     def __init__(self):
-        super(SBOMConfig, self).__init__()
+        super().__init__()
 
         # prefix for Document namespaces; should not end with "/"
         self.namespacePrefix = ""
@@ -30,6 +31,7 @@ class SBOMConfig:
 
         # should also add an SPDX document for the SDK?
         self.includeSDK = False
+
 
 # create Cmake file-based API directories and query file
 # Arguments:
@@ -56,9 +58,10 @@ def setupCmakeQuery(build_dir):
         return True
     else:
         # file doesn't exist, let's create an empty file
-        cm_fd = open(queryFilePath, "w")
-        cm_fd.close()
+        with open(queryFilePath, "w"):
+            pass
         return True
+
 
 # main entry point for SBOM maker
 # Arguments:
@@ -66,8 +69,8 @@ def setupCmakeQuery(build_dir):
 def makeSPDX(cfg):
     # report any odd configuration settings
     if cfg.analyzeIncludes and not cfg.includeSDK:
-        log.wrn(f"config: requested to analyze includes but not to generate SDK SPDX document;")
-        log.wrn(f"config: will proceed but will discard detected includes for SDK header files")
+        log.wrn("config: requested to analyze includes but not to generate SDK SPDX document;")
+        log.wrn("config: will proceed but will discard detected includes for SDK header files")
 
     # set up walker configuration
     walkerCfg = WalkerConfig()
@@ -119,6 +122,12 @@ def makeSPDX(cfg):
     writeSPDX(os.path.join(cfg.spdxDir, "build.spdx"), w.docBuild)
     if not retval:
         log.err("SPDX writer failed for build document; bailing")
+        return False
+
+    # write modules document
+    writeSPDX(os.path.join(cfg.spdxDir, "modules-deps.spdx"), w.docModulesExtRefs)
+    if not retval:
+        log.err("SPDX writer failed for modules-deps document; bailing")
         return False
 
     return True

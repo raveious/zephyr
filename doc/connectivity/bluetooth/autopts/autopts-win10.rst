@@ -3,13 +3,14 @@
 AutoPTS on Windows 10 with nRF52 board
 #######################################
 
-Overview
-========
-
 This tutorial shows how to setup AutoPTS client and server to run both on
 Windows 10. We use WSL1 with Ubuntu only to build a Zephyr project to
 an elf file, because Zephyr SDK is not available on Windows yet.
 Tutorial covers only nrf52840dk.
+
+.. contents::
+    :local:
+    :depth: 2
 
 Update Windows and drivers
 ===========================
@@ -140,7 +141,7 @@ In Git Bash, clone project repo:
 
 .. code-block::
 
-    git clone https://github.com/intel/auto-pts.git
+    git clone https://github.com/auto-pts/auto-pts.git
 
 Go into the project folder:
 

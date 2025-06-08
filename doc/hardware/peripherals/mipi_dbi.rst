@@ -7,6 +7,7 @@ The MIPI DBI driver class implements support for MIPI DBI compliant display
 controllers.
 
 MIPI DBI defines 3 interface types:
+
 * Type A: Motorola 6800 parallel bus
 
 * Type B: Intel 8080 parallel bus
@@ -19,7 +20,8 @@ MIPI DBI defines 3 interface types:
 
   #. 8 write clocks per byte. Command/data selected via GPIO pin
 
-Currently, the API only supports Type C controllers, options 1 and 3.
+Currently, the API does not support Type C controllers with 16 write clocks
+(option 2).
 
 API Reference
 *************

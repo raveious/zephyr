@@ -18,6 +18,7 @@ extern "C" {
 /**
  * @brief Logger
  * @defgroup logger Logger system
+ * @since 1.13
  * @ingroup logging
  * @{
  * @}
@@ -26,6 +27,7 @@ extern "C" {
 /**
  * @brief Logger control API
  * @defgroup log_ctrl Logger control API
+ * @since 1.13
  * @ingroup logger
  * @{
  */
@@ -44,6 +46,12 @@ void log_core_init(void);
  *
  */
 void log_init(void);
+
+/** @brief Trigger the log processing thread to process logs immediately.
+ *
+ *  @note Function  has no effect when CONFIG_LOG_MODE_IMMEDIATE is set.
+ */
+void log_thread_trigger(void);
 
 /**
  * @brief Function for providing thread which is processing logs.
@@ -86,6 +94,17 @@ __syscall void log_panic(void);
  * @retval false No messages pending.
  */
 __syscall bool log_process(void);
+
+/**
+ * @brief Process all pending log messages
+ */
+#ifdef CONFIG_LOG_MODE_DEFERRED
+void log_flush(void);
+#else
+static inline void log_flush(void)
+{
+}
+#endif
 
 /**
  * @brief Return number of buffered log messages.
@@ -293,7 +312,7 @@ int log_mem_get_max_usage(uint32_t *max);
 #define LOG_PROCESS() false
 #endif
 
-#include <syscalls/log_ctrl.h>
+#include <zephyr/syscalls/log_ctrl.h>
 
 /**
  * @}

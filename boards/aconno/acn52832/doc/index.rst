@@ -1,7 +1,4 @@
-.. _acn52832:
-
-acn52832
-########
+.. zephyr:board:: acn52832
 
 Overview
 ********
@@ -23,8 +20,7 @@ nRF52832 ARM Cortex-M4F CPU and the following devices:
 * :abbr:`UART (Universal asynchronous receiver-transmitter)`
 * :abbr:`WDT (Watchdog Timer)`
 
-See `acn52832 website`_ for more information about the board and `Nordic infocenter`_ for more
-information about the SoC.
+See `Nordic infocenter`_ for more information about the SoC.
 
 Hardware
 ********
@@ -130,5 +126,4 @@ References
 **********
 .. target-notes::
 
-.. _acn52832 website: https://aconno.de/products/acn52832/
 .. _Nordic infocenter: https://infocenter.nordicsemi.com/

@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # kernel is a normal CMake library and not a zephyr_library because it
-# should not be --whole-archive'd
+# should usually not be --whole-archive'd
 
 zephyr_syscall_header(
   ${ZEPHYR_BASE}/include/zephyr/device.h
@@ -57,11 +57,15 @@ list(APPEND kernel_files
   init.c
   kheap.c
   mem_slab.c
-  thread.c
+  float.c
   version.c
-  priority_queues.c
-  sched.c
   )
+
+if(CONFIG_SCHED_CPU_MASK)
+list(APPEND kernel_files
+  cpu_mask.c
+  )
+endif()
 
 if(CONFIG_MULTITHREADING)
 list(APPEND kernel_files
@@ -75,14 +79,51 @@ list(APPEND kernel_files
   system_work_q.c
   work.c
   condvar.c
+  thread.c
+  sched.c
   )
 
-if(CONFIG_SMP)
-list(APPEND kernel_files
-     smp.c)
+if (CONFIG_SCHED_SCALABLE OR CONFIG_WAITQ_SCALABLE)
+list(APPEND kernel_files priority_queues.c)
 endif()
 
+# FIXME: Once the prior pipe implementation is removed, this should be included in the above list
+if(NOT CONFIG_PIPES)
+list(APPEND kernel_files pipe.c)
+endif() # NOT CONFIG_PIPES
+if(CONFIG_SMP)
+list(APPEND kernel_files
+     smp.c
+     ipi.c)
 endif()
+else() # CONFIG_MULTITHREADING
+list(APPEND kernel_files
+  nothread.c
+  )
+endif() # CONFIG_MULTITHREADING
+
+if(CONFIG_TIMESLICING)
+list(APPEND kernel_files
+     timeslicing.c)
+endif()
+
+if(CONFIG_SPIN_VALIDATE)
+list(APPEND kernel_files
+     spinlock_validate.c)
+endif()
+
+if(CONFIG_IRQ_OFFLOAD)
+list(APPEND kernel_files
+  irq_offload.c
+  )
+endif()
+
+
+if(CONFIG_THREAD_MONITOR)
+list(APPEND kernel_files
+     thread_monitor.c)
+endif()
+
 
 if(CONFIG_XIP)
 list(APPEND kernel_files
@@ -106,7 +147,7 @@ set_target_properties(
   __ZEPHYR_SUPERVISOR__
   )
 
-target_sources_ifdef(CONFIG_STACK_CANARIES        kernel PRIVATE compiler_stack_protect.c)
+target_sources_ifdef(CONFIG_REQUIRES_STACK_CANARIES   kernel PRIVATE compiler_stack_protect.c)
 target_sources_ifdef(CONFIG_SYS_CLOCK_EXISTS      kernel PRIVATE timeout.c timer.c)
 target_sources_ifdef(CONFIG_ATOMIC_OPERATIONS_C   kernel PRIVATE atomic_c.c)
 target_sources_ifdef(CONFIG_MMU                   kernel PRIVATE mmu.c)

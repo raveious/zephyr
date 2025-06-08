@@ -10,11 +10,7 @@
 static void regulator_delay(uint32_t delay_us)
 {
 	if (delay_us > 0U) {
-#ifdef CONFIG_MULTITHREADING
 		k_sleep(K_USEC(delay_us));
-#else
-		k_busy_wait(delay_us);
-#endif
 	}
 }
 
@@ -187,12 +183,14 @@ int regulator_disable(const struct device *dev)
 	(void)k_mutex_lock(&data->lock, K_FOREVER);
 #endif
 
-	data->refcnt--;
+	if (data->refcnt > 0) {
+		data->refcnt--;
 
-	if (data->refcnt == 0) {
-		ret = api->disable(dev);
-		if (ret < 0) {
-			data->refcnt++;
+		if (data->refcnt == 0) {
+			ret = api->disable(dev);
+			if (ret < 0) {
+				data->refcnt++;
+			}
 		}
 	}
 

@@ -273,7 +273,7 @@ static int dma_atcdmac300_config(const struct device *dev, uint32_t channel,
 	ch_ctrl |= DMA_CH_CTRL_INTABT;
 
 	/* Disable the error callback */
-	if (!cfg->error_callback_en) {
+	if (!cfg->error_callback_dis) {
 		ch_ctrl |= DMA_CH_CTRL_INTERR;
 	}
 
@@ -493,7 +493,7 @@ static int dma_atcdmac300_get_status(const struct device *dev,
 	return 0;
 }
 
-static const struct dma_driver_api dma_atcdmac300_api = {
+static DEVICE_API(dma, dma_atcdmac300_api) = {
 	.config = dma_atcdmac300_config,
 	.reload = dma_atcdmac300_reload,
 	.start = dma_atcdmac300_transfer_start,

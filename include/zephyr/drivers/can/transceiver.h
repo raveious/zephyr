@@ -17,6 +17,8 @@ extern "C" {
 /**
  * @brief CAN Transceiver Driver APIs
  * @defgroup can_transceiver CAN Transceiver
+ * @since 3.1
+ * @version 0.1.0
  * @ingroup io_interfaces
  * @{
  */
@@ -63,10 +65,7 @@ __subsystem struct can_transceiver_driver_api {
  */
 static inline int can_transceiver_enable(const struct device *dev, can_mode_t mode)
 {
-	const struct can_transceiver_driver_api *api =
-		(const struct can_transceiver_driver_api *)dev->api;
-
-	return api->enable(dev, mode);
+	return DEVICE_API_GET(can_transceiver, dev)->enable(dev, mode);
 }
 
 /**
@@ -85,10 +84,7 @@ static inline int can_transceiver_enable(const struct device *dev, can_mode_t mo
  */
 static inline int can_transceiver_disable(const struct device *dev)
 {
-	const struct can_transceiver_driver_api *api =
-		(const struct can_transceiver_driver_api *)dev->api;
-
-	return api->disable(dev);
+	return DEVICE_API_GET(can_transceiver, dev)->disable(dev);
 }
 
 /**

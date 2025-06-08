@@ -357,8 +357,7 @@ static inline uint8_t *get_mac(const struct device *dev)
 	upipe->mac_addr[3] = 0x30;
 
 #if defined(CONFIG_IEEE802154_UPIPE_RANDOM_MAC)
-	UNALIGNED_PUT(sys_cpu_to_be32(sys_rand32_get()),
-		      (uint32_t *) ((uint8_t *)upipe->mac_addr+4));
+	sys_rand_get(&upipe->mac_addr[4], 4U);
 #else
 	upipe->mac_addr[4] = CONFIG_IEEE802154_UPIPE_MAC4;
 	upipe->mac_addr[5] = CONFIG_IEEE802154_UPIPE_MAC5;
@@ -402,4 +401,4 @@ static const struct ieee802154_radio_api upipe_radio_api = {
 NET_DEVICE_DT_INST_DEFINE(0, upipe_init, NULL, &upipe_context_data, NULL,
 			  CONFIG_KERNEL_INIT_PRIORITY_DEFAULT, &upipe_radio_api,
 			  IEEE802154_L2, NET_L2_GET_CTX_TYPE(IEEE802154_L2),
-			  125);
+			  IEEE802154_MTU);

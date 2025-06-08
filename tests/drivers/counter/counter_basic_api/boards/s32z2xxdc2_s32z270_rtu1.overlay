@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 NXP
+ * Copyright 2022-2024 NXP
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -25,7 +25,29 @@
 };
 
 &pit0 {
-	pit-channel = <0>;
-	pit-period = <1000000>;
+	status = "okay";
+};
+
+&pit0_channel0 {
+	status = "okay";
+};
+
+&pit0_channel1 {
+	status = "okay";
+};
+
+&pit0_channel2 {
+	status = "okay";
+};
+
+&pit0_channel3 {
+	status = "okay";
+};
+
+&pit0_channel4 {
+	status = "okay";
+};
+
+&pit0_channel5 {
 	status = "okay";
 };

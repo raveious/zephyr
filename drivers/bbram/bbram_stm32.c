@@ -11,6 +11,7 @@
 #include <zephyr/drivers/bbram.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/util.h>
+#include <stm32_ll_pwr.h>
 #include <stm32_ll_rtc.h>
 LOG_MODULE_REGISTER(bbram, CONFIG_BBRAM_LOG_LEVEL);
 
@@ -65,6 +66,10 @@ static int bbram_stm32_write(const struct device *dev, size_t offset, size_t siz
 		return -EFAULT;
 	}
 
+#if defined(PWR_CR_DBP) || defined(PWR_CR1_DBP) || defined(PWR_DBPCR_DBP) || defined(PWR_DBPR_DBP)
+	LL_PWR_EnableBkUpAccess();
+#endif /* PWR_CR_DBP || PWR_CR1_DBP || PWR_DBPCR_DBP || PWR_DBPR_DBP */
+
 	for (size_t written = 0; written < size; written += to_copy) {
 		reg = STM32_BKP_REG(STM32_BKP_REG_INDEX(offset + written));
 		begin = STM32_BKP_REG_BYTE_INDEX(offset + written);
@@ -72,6 +77,10 @@ static int bbram_stm32_write(const struct device *dev, size_t offset, size_t siz
 		bytecpy((uint8_t *)&reg + begin, data + written, to_copy);
 		STM32_BKP_REG(STM32_BKP_REG_INDEX(offset + written)) = reg;
 	}
+
+#if defined(PWR_CR_DBP) || defined(PWR_CR1_DBP) || defined(PWR_DBPCR_DBP) || defined(PWR_DBPR_DBP)
+	LL_PWR_DisableBkUpAccess();
+#endif /* PWR_CR_DBP || PWR_CR1_DBP || PWR_DBPCR_DBP || PWR_DBPR_DBP */
 
 	return 0;
 }
@@ -85,7 +94,7 @@ static int bbram_stm32_get_size(const struct device *dev, size_t *size)
 	return 0;
 }
 
-static const struct bbram_driver_api bbram_stm32_driver_api = {
+static DEVICE_API(bbram, bbram_stm32_driver_api) = {
 	.read = bbram_stm32_read,
 	.write = bbram_stm32_write,
 	.get_size = bbram_stm32_get_size,

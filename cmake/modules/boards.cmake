@@ -21,13 +21,18 @@
 # Outcome:
 # The following variables will be defined when this CMake module completes:
 #
-# - BOARD:                Board, without revision field.
-# - BOARD_REVISION:       Board revision
-# - BOARD_DIR:            Board directory with the implementation for selected board
-# - ARCH_DIR:             Arch dir for extracted from selected board
-# - BOARD_ROOT:           BOARD_ROOT with ZEPHYR_BASE appended
-# - BOARD_EXTENSION_DIRS: List of board extension directories (If
-#                         BOARD_EXTENSIONS is not explicitly disabled)
+# - BOARD:                       Board, without revision field.
+# - BOARD_REVISION:              Board revision
+# - BOARD_QUALIFIERS:            Board qualifiers
+# - NORMALIZED_BOARD_QUALIFIERS: Board qualifiers in lower-case format where slashes have been
+#                                replaced with underscores
+# - NORMALIZED_BOARD_TARGET:     Board target in lower-case format where slashes have been
+#                                replaced with underscores
+# - BOARD_DIR:                   Board directory with the implementation for selected board
+# - ARCH_DIR:                    Arch dir for extracted from selected board
+# - BOARD_ROOT:                  BOARD_ROOT with ZEPHYR_BASE appended
+# - BOARD_EXTENSION_DIRS:        List of board extension directories (If
+#                                BOARD_EXTENSIONS is not explicitly disabled)
 #
 # The following targets will be defined when this CMake module completes:
 # - board: when invoked, a list of valid boards will be printed
@@ -61,25 +66,25 @@ if(NOT unittest IN_LIST Zephyr_FIND_COMPONENTS)
   list(APPEND BOARD_ROOT ${ZEPHYR_BASE})
 endif()
 
-# Helper function for parsing a board's name, revision, and identifier,
+# Helper function for parsing a board's name, revision, and qualifiers,
 # from one input variable to three separate output variables.
-function(parse_board_components board_in name_out revision_out identifier_out)
+function(parse_board_components board_in name_out revision_out qualifiers_out)
   if(NOT "${${board_in}}" MATCHES "^([^@/]+)(@[^@/]+)?(/[^@]+)?$")
     message(FATAL_ERROR
-      "Invalid revision / identifier format for ${board_in} (${${board_in}}). "
-      "Valid format is: <board>@<revision>/<identifier>"
+      "Invalid revision / qualifiers format for ${board_in} (${${board_in}}). "
+      "Valid format is: <board>@<revision>/<qualifiers>"
     )
   endif()
   string(REPLACE "@" "" board_revision "${CMAKE_MATCH_2}")
 
   set(${name_out}       ${CMAKE_MATCH_1}  PARENT_SCOPE)
   set(${revision_out}   ${board_revision} PARENT_SCOPE)
-  set(${identifier_out} ${CMAKE_MATCH_3}  PARENT_SCOPE)
+  set(${qualifiers_out} ${CMAKE_MATCH_3}  PARENT_SCOPE)
 endfunction()
 
 parse_board_components(
   BOARD
-  BOARD BOARD_REVISION BOARD_IDENTIFIER
+  BOARD BOARD_REVISION BOARD_QUALIFIERS
 )
 
 zephyr_get(ZEPHYR_BOARD_ALIASES)
@@ -89,26 +94,26 @@ if(DEFINED ZEPHYR_BOARD_ALIASES)
     set(BOARD_ALIAS ${BOARD} CACHE STRING "Board alias, provided by user")
     parse_board_components(
       ${BOARD}_BOARD_ALIAS
-      BOARD BOARD_ALIAS_REVISION BOARD_ALIAS_IDENTIFIER
+      BOARD BOARD_ALIAS_REVISION BOARD_ALIAS_QUALIFIERS
     )
     message(STATUS "Aliased BOARD=${BOARD_ALIAS} changed to ${BOARD}")
     if(NOT DEFINED BOARD_REVISION)
       set(BOARD_REVISION ${BOARD_ALIAS_REVISION})
     endif()
-    set(BOARD_IDENTIFIER ${BOARD_ALIAS_IDENTIFIER}${BOARD_IDENTIFIER})
+    set(BOARD_QUALIFIERS ${BOARD_ALIAS_QUALIFIERS}${BOARD_QUALIFIERS})
   endif()
 endif()
 
 include(${ZEPHYR_BASE}/boards/deprecated.cmake)
-if(${BOARD}${BOARD_IDENTIFIER}_DEPRECATED)
-  set(BOARD_DEPRECATED ${BOARD}${BOARD_IDENTIFIER} CACHE STRING "Deprecated BOARD, provided by user")
+if(${BOARD}${BOARD_QUALIFIERS}_DEPRECATED)
+  set(BOARD_DEPRECATED ${BOARD}${BOARD_QUALIFIERS} CACHE STRING "Deprecated BOARD, provided by user")
   message(WARNING
     "Deprecated BOARD=${BOARD_DEPRECATED} specified, "
-    "board automatically changed to: ${${BOARD}${BOARD_IDENTIFIER}_DEPRECATED}."
+    "board automatically changed to: ${${BOARD}${BOARD_QUALIFIERS}_DEPRECATED}."
   )
   parse_board_components(
-    ${BOARD}${BOARD_IDENTIFIER}_DEPRECATED
-    BOARD BOARD_DEPRECATED_REVISION BOARD_IDENTIFIER
+    ${BOARD}${BOARD_QUALIFIERS}_DEPRECATED
+    BOARD BOARD_DEPRECATED_REVISION BOARD_QUALIFIERS
   )
   if(DEFINED BOARD_DEPRECATED_REVISION)
     if(DEFINED BOARD_REVISION)
@@ -131,13 +136,12 @@ foreach(root ${BOARD_ROOT})
     message(WARNING "BOARD_ROOT element without a 'boards' subdirectory:
 ${root}
 Hints:
-  - if your board directory is '/foo/bar/boards/<ARCH>/my_board' then add '/foo/bar' to BOARD_ROOT, not the entire board directory
+  - if your board directory is '/foo/bar/boards/my_board' then add '/foo/bar' to BOARD_ROOT, not the entire board directory
   - if in doubt, use absolute paths")
   endif()
 endforeach()
 
-if((HWMv1 AND NOT EXISTS ${BOARD_DIR}/${BOARD}_defconfig)
-   OR (HWMv2 AND NOT EXISTS ${BOARD_DIR}/board.yml))
+if(HWMv2 AND NOT EXISTS ${BOARD_DIR}/board.yml)
   message(WARNING "BOARD_DIR: ${BOARD_DIR} has been moved or deleted. "
                   "Trying to find new location."
   )
@@ -178,11 +182,9 @@ endif()
 
 set(format_str "{NAME}\;{DIR}\;{HWM}\;")
 set(format_str "${format_str}{REVISION_FORMAT}\;{REVISION_DEFAULT}\;{REVISION_EXACT}\;")
-set(format_str "${format_str}{REVISIONS}\;{SOCS}\;{IDENTIFIERS}")
+set(format_str "${format_str}{REVISIONS}\;{SOCS}\;{QUALIFIERS}")
 
-if(BOARD_DIR)
-  set(board_dir_arg "--board-dir=${BOARD_DIR}")
-endif()
+list(TRANSFORM BOARD_DIRECTORIES PREPEND "--board-dir=" OUTPUT_VARIABLE board_dir_arg)
 execute_process(${list_boards_commands} --board=${BOARD} ${board_dir_arg}
   --cmakeformat=${format_str}
                 OUTPUT_VARIABLE ret_board
@@ -195,16 +197,20 @@ endif()
 
 if(NOT "${ret_board}" STREQUAL "")
   string(STRIP "${ret_board}" ret_board)
-  set(single_val "NAME;DIR;HWM;REVISION_FORMAT;REVISION_DEFAULT;REVISION_EXACT")
-  set(multi_val  "REVISIONS;SOCS;IDENTIFIERS")
-  cmake_parse_arguments(BOARD "" "${single_val}" "${multi_val}" ${ret_board})
-  set(BOARD_DIR ${BOARD_DIR} CACHE PATH "Board directory for board (${BOARD})" FORCE)
+  set(single_val "NAME;HWM;REVISION_FORMAT;REVISION_DEFAULT;REVISION_EXACT")
+  set(multi_val  "DIR;REVISIONS;SOCS;QUALIFIERS")
+  cmake_parse_arguments(LIST_BOARD "" "${single_val}" "${multi_val}" ${ret_board})
+  list(GET LIST_BOARD_DIR 0 BOARD_DIR)
+  set(BOARD_DIR ${BOARD_DIR} CACHE PATH "Main board directory for board (${BOARD})" FORCE)
+  set(BOARD_DIRECTORIES ${LIST_BOARD_DIR} CACHE INTERNAL "List of board directories for board (${BOARD})" FORCE)
+  foreach(dir ${BOARD_DIRECTORIES})
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${dir}/board.yml)
+  endforeach()
 
   # Create two CMake variables identifying the hw model.
-  # CMake variable: HWM=[v1,v2]
-  # CMake variable: HWMv1=True, when HWMv1 is in use.
-  # CMake variable: HWMv2=True, when HWMv2 is in use.
-  set(HWM       ${BOARD_HWM} CACHE INTERNAL "Zephyr hardware model version")
+  # CMake variable: HWM=v2
+  # CMake variable: HWMv2=True
+  set(HWM       ${LIST_BOARD_HWM} CACHE INTERNAL "Zephyr hardware model version")
   set(HWM${HWM} True   CACHE INTERNAL "Zephyr hardware model")
 elseif(BOARD_DIR)
   message(FATAL_ERROR "Error finding board: ${BOARD} in ${BOARD_DIR}.\n"
@@ -220,80 +226,67 @@ else()
   message(FATAL_ERROR "Invalid BOARD; see above.")
 endif()
 
-if(HWMv1 AND DEFINED BOARD_IDENTIFIER)
-  message(FATAL_ERROR
-          "Board '${BOARD}' does not support board identifiers, ${BOARD}${BOARD_IDENTIFIER}.\n"
-          "Please specify board without an identifier.\n"
-  )
-endif()
-
 cmake_path(IS_PREFIX ZEPHYR_BASE "${BOARD_DIR}" NORMALIZE in_zephyr_tree)
 if(NOT in_zephyr_tree)
   set(USING_OUT_OF_TREE_BOARD 1)
 endif()
 
-if(HWMv1)
-  if(EXISTS ${BOARD_DIR}/revision.cmake)
-    # Board provides revision handling.
+if(LIST_BOARD_REVISION_FORMAT)
+  if(LIST_BOARD_REVISION_FORMAT STREQUAL "custom")
     include(${BOARD_DIR}/revision.cmake)
-  elseif(BOARD_REVISION)
-    message(WARNING "Board revision ${BOARD_REVISION} specified for ${BOARD}, \
-                     but board has no revision so revision will be ignored.")
-  endif()
-elseif(HWMv2)
-  if(BOARD_REVISION_FORMAT)
-    if(BOARD_REVISION_FORMAT STREQUAL "custom")
-      include(${BOARD_DIR}/revision.cmake)
-    else()
-      if(EXISTS ${BOARD_DIR}/revision.cmake)
-        message(WARNING
-          "revision.cmake ignored, revision.cmake is only used for revision format: 'custom'"
-        )
-      endif()
-
-      string(TOUPPER "${BOARD_REVISION_FORMAT}" rev_format)
-      if(BOARD_REVISION_EXACT)
-        set(rev_exact EXACT)
-      endif()
-
-      board_check_revision(
-        FORMAT ${rev_format}
-        DEFAULT_REVISION ${BOARD_REVISION_DEFAULT}
-        VALID_REVISIONS ${BOARD_REVISIONS}
-        ${rev_exact}
-      )
-    endif()
-  elseif(DEFINED BOARD_REVISION)
+  else()
     if(EXISTS ${BOARD_DIR}/revision.cmake)
       message(WARNING
-        "revision.cmake is not used, revisions must be defined in '${BOARD_DIR}/board.yml'"
+        "revision.cmake ignored, revision.cmake is only used for revision format: 'custom'"
       )
     endif()
 
-    message(FATAL_ERROR "Invalid board revision: ${BOARD_REVISION}\n"
-                        "Board '${BOARD}' does not define any revisions."
+    string(TOUPPER "${LIST_BOARD_REVISION_FORMAT}" rev_format)
+    if(LIST_BOARD_REVISION_EXACT)
+      set(rev_exact EXACT)
+    endif()
+
+    board_check_revision(
+      FORMAT ${rev_format}
+      DEFAULT_REVISION ${LIST_BOARD_REVISION_DEFAULT}
+      VALID_REVISIONS ${LIST_BOARD_REVISIONS}
+      ${rev_exact}
+    )
+  endif()
+elseif(DEFINED BOARD_REVISION)
+  if(EXISTS ${BOARD_DIR}/revision.cmake)
+    message(WARNING
+      "revision.cmake is not used, revisions must be defined in '${BOARD_DIR}/board.yml'"
     )
   endif()
 
-  if(BOARD_IDENTIFIERS)
-    # Allow users to omit the SoC when building for a board with a single SoC.
-    list(LENGTH BOARD_SOCS socs_length)
-    if(NOT DEFINED BOARD_IDENTIFIER AND socs_length EQUAL 1)
-      set(BOARD_IDENTIFIER "/${BOARD_SOCS}")
-    elseif("${BOARD_IDENTIFIER}" MATCHES "^//.*" AND socs_length EQUAL 1)
-      string(REGEX REPLACE "^//" "/${BOARD_SOCS}/" BOARD_IDENTIFIER "${BOARD_IDENTIFIER}")
-    endif()
+  message(FATAL_ERROR "Invalid board revision: ${BOARD_REVISION}\n"
+                      "Board '${BOARD}' does not define any revisions."
+  )
+endif()
 
-    if(NOT ("${BOARD}${BOARD_IDENTIFIER}" IN_LIST BOARD_IDENTIFIERS))
-      string(REPLACE ";" "\n" BOARD_IDENTIFIERS "${BOARD_IDENTIFIERS}")
-      unset(CACHED_BOARD CACHE)
-      message(FATAL_ERROR "Board identifier `${BOARD_IDENTIFIER}` for board \
-            `${BOARD}` not found. Please specify a valid board.\n"
-            "Valid board identifiers for ${BOARD_NAME} are:\n${BOARD_IDENTIFIERS}\n")
+if(LIST_BOARD_QUALIFIERS)
+  # Allow users to omit the SoC when building for a board with a single SoC.
+  list(LENGTH LIST_BOARD_SOCS socs_length)
+  if(socs_length EQUAL 1)
+    set(BOARD_SINGLE_SOC TRUE)
+    set(BOARD_${BOARD}_SINGLE_SOC TRUE)
+    if(NOT DEFINED BOARD_QUALIFIERS)
+      set(BOARD_QUALIFIERS "/${LIST_BOARD_SOCS}")
+    elseif("${BOARD_QUALIFIERS}" MATCHES "^//.*")
+      string(REGEX REPLACE "^//" "/${LIST_BOARD_SOCS}/" BOARD_QUALIFIERS "${BOARD_QUALIFIERS}")
     endif()
   endif()
-else()
-  message(FATAL_ERROR "Unknown hw model (${HWM}) for board: ${BOARD}.")
+
+  set(board_targets ${LIST_BOARD_QUALIFIERS})
+  list(TRANSFORM board_targets PREPEND "${BOARD}/")
+  if(NOT ("${BOARD}${BOARD_QUALIFIERS}" IN_LIST board_targets))
+    string(REPLACE ";" "\n" board_targets "${board_targets}")
+    unset(CACHED_BOARD CACHE)
+    message(FATAL_ERROR "Board qualifiers `${BOARD_QUALIFIERS}` for board \
+          `${BOARD}` not found. Please specify a valid board target.\n"
+          "Valid board targets for ${LIST_BOARD_NAME} are:\n${board_targets}\n")
+  endif()
 endif()
 
 set(board_message "Board: ${BOARD}")
@@ -308,10 +301,15 @@ if(DEFINED BOARD_REVISION)
   string(REPLACE "." "_" BOARD_REVISION_STRING ${BOARD_REVISION})
 endif()
 
-if(DEFINED BOARD_IDENTIFIER)
-  string(REGEX REPLACE "^/" "identifier: " board_message_identifier "${BOARD_IDENTIFIER}")
-  set(board_message "${board_message}, ${board_message_identifier}")
+if(DEFINED BOARD_QUALIFIERS)
+  string(REGEX REPLACE "^/" "qualifiers: " board_message_qualifiers "${BOARD_QUALIFIERS}")
+  set(board_message "${board_message}, ${board_message_qualifiers}")
+
+  string(REPLACE "/" "_" NORMALIZED_BOARD_QUALIFIERS "${BOARD_QUALIFIERS}")
 endif()
+
+set(NORMALIZED_BOARD_TARGET "${BOARD}${BOARD_QUALIFIERS}")
+string(REPLACE "/" "_" NORMALIZED_BOARD_TARGET "${NORMALIZED_BOARD_TARGET}")
 
 message(STATUS "${board_message}")
 
@@ -334,3 +332,8 @@ if(BOARD_EXTENSIONS)
     list(APPEND BOARD_EXTENSION_DIRS ${board_extension_dir})
   endforeach()
 endif()
+build_info(board name VALUE ${BOARD})
+string(REGEX REPLACE "^/" "" qualifiers "${BOARD_QUALIFIERS}")
+build_info(board qualifiers VALUE ${qualifiers})
+build_info(board revision VALUE ${BOARD_REVISION})
+build_info(board path PATH ${BOARD_DIRECTORIES})

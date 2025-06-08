@@ -339,8 +339,8 @@ For more information about the Adafruit PiCowbell CAN Bus shield:
 Programming
 ***********
 
-Set ``-DSHIELD=dfrobot_can_bus_v2_0`` or ``-DSHIELD=keyestudio_can_bus_ks0411``
-or ``-DSHIELD=adafruit_can_picowbell`` when you invoke ``west build`` or ``cmake`` in your Zephyr application. For
+Set ``--shield dfrobot_can_bus_v2_0`` or ``--shield keyestudio_can_bus_ks0411``
+or ``--shield adafruit_can_picowbell`` when you invoke ``west build`` or ``cmake`` in your Zephyr application. For
 example:
 
 .. zephyr-app-commands::
@@ -374,7 +374,7 @@ example:
    https://www.microchip.com/en-us/product/MCP2515
 
 .. _Keyestudio Website:
-   https://www.keyestudio.com/products/2019new-keyestudio-can-bus-shield-mcp2551-chip-with-sd-socket-for-arduino-uno-r3
+   https://www.keyestudio.com/2019new-keyestudio-can-bus-shield-mcp2551-chip-with-sd-socket-for-arduino-uno-r3-p0543.html
 
 .. _Keyestudio Wiki:
    https://wiki.keyestudio.com/KS0411_keyestudio_CAN-BUS_Shield

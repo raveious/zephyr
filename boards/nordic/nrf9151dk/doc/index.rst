@@ -1,7 +1,4 @@
-.. _nrf9151dk_nrf9151:
-
-nRF9151 DK
-##########
+.. zephyr:board:: nrf9151dk
 
 Overview
 ********
@@ -26,9 +23,7 @@ Cortex-M33F CPU with ARMv8-M Security Extension and the following devices:
 * :abbr:`WDT (Watchdog Timer)`
 * :abbr:`IDAU (Implementation Defined Attribution Unit)`
 
-More information about the board can be found at the
-`nRF9151 DK website`_. The `Nordic Semiconductor Infocenter`_
-contains the processor's information and the datasheet.
+More information about the board can be found at the `nRF9151 website`_.
 
 
 Hardware
@@ -41,51 +36,7 @@ is 32 MHz.
 Supported Features
 ==================
 
-The ``nrf9151dk/nrf9151`` board configuration supports the following
-hardware features:
-
-+-----------+------------+----------------------+
-| Interface | Controller | Driver/Component     |
-+===========+============+======================+
-| ADC       | on-chip    | adc                  |
-+-----------+------------+----------------------+
-| CLOCK     | on-chip    | clock_control        |
-+-----------+------------+----------------------+
-| FLASH     | on-chip    | flash                |
-+-----------+------------+----------------------+
-| FLASH     | external   | spi                  |
-+-----------+------------+----------------------+
-| GPIO      | on-chip    | gpio                 |
-+-----------+------------+----------------------+
-| GPIO      | external   | i2c                  |
-+-----------+------------+----------------------+
-| I2C(M)    | on-chip    | i2c                  |
-+-----------+------------+----------------------+
-| MPU       | on-chip    | arch/arm             |
-+-----------+------------+----------------------+
-| NVIC      | on-chip    | arch/arm             |
-+-----------+------------+----------------------+
-| PWM       | on-chip    | pwm                  |
-+-----------+------------+----------------------+
-| RTC       | on-chip    | system clock         |
-+-----------+------------+----------------------+
-| RTT       | nRF53      | console              |
-+-----------+------------+----------------------+
-| SPI(M/S)  | on-chip    | spi                  |
-+-----------+------------+----------------------+
-| SPU       | on-chip    | system protection    |
-+-----------+------------+----------------------+
-| UARTE     | on-chip    | serial               |
-+-----------+------------+----------------------+
-| WDT       | on-chip    | watchdog             |
-+-----------+------------+----------------------+
-
-
-.. _nrf9151dk_additional_hardware:
-
-Other hardware features have not been enabled yet for this board.
-See `nRF9151 DK website`_ and `Nordic Semiconductor Infocenter`_
-for a complete list of nRF9151 DK board hardware features.
+.. zephyr:board-supported-hw::
 
 Connections and IOs
 ===================
@@ -120,6 +71,8 @@ Security components
 Programming and Debugging
 *************************
 
+.. zephyr:board-supported-runners::
+
 ``nrf9151dk/nrf9151`` supports the Armv8m Security Extension, and by default boots
 in the Secure state.
 
@@ -153,7 +106,7 @@ found in :ref:`nordic_segger_flashing`. Then build and flash
 applications as usual (see :ref:`build_an_application` and
 :ref:`application_run` for more details).
 
-Here is an example for the :ref:`hello_world` application.
+Here is an example for the :zephyr:code-sample:`hello_world` application.
 
 First, run your favorite terminal program to listen for output.
 
@@ -198,6 +151,6 @@ References
 
 .. _IDAU:
    https://developer.arm.com/docs/100690/latest/attribution-units-sau-and-idau
-.. _nRF9151 DK website: https://www.nordicsemi.com/Software-and-Tools/Development-Kits/nRF9151-DK
-.. _Nordic Semiconductor Infocenter: https://infocenter.nordicsemi.com
+.. _nRF9151 website: https://www.nordicsemi.com/Products/nRF9151
+.. _Nordic Semiconductor TechDocs: https://docs.nordicsemi.com/
 .. _Trusted Firmware M: https://www.trustedfirmware.org/projects/tf-m/

@@ -18,11 +18,11 @@ static inline bool is_hw_caps_supported(const struct device *dev,
 {
 	const struct ethernet_api *api = dev->api;
 
-	if (!api) {
+	if (!api || !api->get_capabilities) {
 		return false;
 	}
 
-	return !!(api->get_capabilities(dev) & caps);
+	return ((api->get_capabilities(dev) & caps) != 0);
 }
 
 static int ethernet_set_config(uint32_t mgmt_request,
@@ -57,22 +57,19 @@ static int ethernet_set_config(uint32_t mgmt_request,
 		type = ETHERNET_CONFIG_TYPE_AUTO_NEG;
 	} else if (mgmt_request == NET_REQUEST_ETHERNET_SET_LINK) {
 		if (params->l.link_10bt) {
-			if (!is_hw_caps_supported(dev,
-						  ETHERNET_LINK_10BASE_T)) {
+			if (!is_hw_caps_supported(dev, ETHERNET_LINK_10BASE)) {
 				return -ENOTSUP;
 			}
 
 			config.l.link_10bt = true;
 		} else if (params->l.link_100bt) {
-			if (!is_hw_caps_supported(dev,
-						  ETHERNET_LINK_100BASE_T)) {
+			if (!is_hw_caps_supported(dev, ETHERNET_LINK_100BASE)) {
 				return -ENOTSUP;
 			}
 
 			config.l.link_100bt = true;
 		} else if (params->l.link_1000bt) {
-			if (!is_hw_caps_supported(dev,
-						  ETHERNET_LINK_1000BASE_T)) {
+			if (!is_hw_caps_supported(dev, ETHERNET_LINK_1000BASE)) {
 				return -ENOTSUP;
 			}
 
@@ -90,7 +87,7 @@ static int ethernet_set_config(uint32_t mgmt_request,
 		config.full_duplex = params->full_duplex;
 		type = ETHERNET_CONFIG_TYPE_DUPLEX;
 	} else if (mgmt_request == NET_REQUEST_ETHERNET_SET_MAC_ADDRESS) {
-		if (net_if_is_up(iface)) {
+		if (net_if_is_admin_up(iface)) {
 			return -EACCES;
 		}
 
@@ -98,7 +95,8 @@ static int ethernet_set_config(uint32_t mgmt_request,
 		 * generated from old MAC address, from network interface if
 		 * needed.
 		 */
-		if (IS_ENABLED(CONFIG_NET_NATIVE_IPV6)) {
+		if (IS_ENABLED(CONFIG_NET_NATIVE_IPV6) &&
+		    IS_ENABLED(CONFIG_NET_IPV6_IID_EUI_64)) {
 			struct in6_addr iid;
 
 			net_ipv6_addr_create_iid(&iid,
@@ -207,6 +205,13 @@ static int ethernet_set_config(uint32_t mgmt_request,
 
 		config.txinjection_mode = params->txinjection_mode;
 		type = ETHERNET_CONFIG_TYPE_TXINJECTION_MODE;
+	} else if (mgmt_request == NET_REQUEST_ETHERNET_SET_MAC_FILTER) {
+		if (!is_hw_caps_supported(dev, ETHERNET_HW_FILTERING)) {
+			return -ENOTSUP;
+		}
+
+		memcpy(&config.filter, &params->filter, sizeof(struct ethernet_filter));
+		type = ETHERNET_CONFIG_TYPE_FILTER;
 	} else {
 		return -EINVAL;
 	}
@@ -245,6 +250,9 @@ NET_MGMT_REGISTER_REQUEST_HANDLER(NET_REQUEST_ETHERNET_SET_T1S_PARAM,
 				  ethernet_set_config);
 
 NET_MGMT_REGISTER_REQUEST_HANDLER(NET_REQUEST_ETHERNET_SET_TXINJECTION_MODE,
+				  ethernet_set_config);
+
+NET_MGMT_REGISTER_REQUEST_HANDLER(NET_REQUEST_ETHERNET_SET_MAC_FILTER,
 				  ethernet_set_config);
 
 static int ethernet_get_config(uint32_t mgmt_request,

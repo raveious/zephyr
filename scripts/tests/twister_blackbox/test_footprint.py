@@ -12,8 +12,11 @@ import mock
 import os
 import pytest
 import sys
+import re
 
+# pylint: disable=no-name-in-module
 from conftest import ZEPHYR_BASE, TEST_DATA, testsuite_filename_mock, clear_log_in_test
+from twisterlib.statuses import TwisterStatus
 from twisterlib.testplan import TestPlan
 
 
@@ -24,11 +27,14 @@ class TestFootprint:
 
     # These warnings notify us that deltas were shown in log.
     # Coupled with the code under test.
-    DELTA_WARNING_RELEASE = 'Deltas based on metrics from last release'
-    DELTA_WARNING_RUN = 'Deltas based on metrics from last run'
+    DELTA_WARNING_COMPARE = re.compile(
+        r'Found [1-9]+[0-9]* footprint deltas to .*blackbox-out\.[0-9]+/twister.json as a baseline'
+    )
+    DELTA_WARNING_RUN = re.compile(r'Found [1-9]+[0-9]* footprint deltas to the last twister run')
 
     # Size report key we modify to control for deltas
     RAM_KEY = 'used_ram'
+    DELTA_DETAIL = re.compile(RAM_KEY + r' \+[0-9]+, is now +[0-9]+ \+[0-9.]+%')
 
     @classmethod
     def setup_class(cls):
@@ -51,7 +57,7 @@ class TestFootprint:
     )
     def test_compare_report(self, caplog, out_path, old_ram_multiplier, expect_delta_log):
         # First run
-        test_platforms = ['frdm_k64f']
+        test_platforms = ['intel_adl_crb']
         path = os.path.join(TEST_DATA, 'tests', 'dummy', 'device', 'group')
         args = ['-i', '--outdir', out_path, '-T', path] + \
                ['--enable-size-report'] + \
@@ -71,9 +77,10 @@ class TestFootprint:
         with open(os.path.join(out_path, 'twister.json')) as f:
             j = json.load(f)
             for ts in j['testsuites']:
-                if 'reason' not in ts:
+                if TwisterStatus(ts.get('status')) == TwisterStatus.NOTRUN:
                     # We assume positive RAM usage.
                     ts[self.RAM_KEY] *= old_ram_multiplier
+
         with open(os.path.join(out_path, 'twister.json'), 'w') as f:
             f.write(json.dumps(j, indent=4))
 
@@ -84,7 +91,7 @@ class TestFootprint:
         )
 
         # Second run
-        test_platforms = ['frdm_k64f']
+        test_platforms = ['intel_adl_crb']
         path = os.path.join(TEST_DATA, 'tests', 'dummy')
         args = ['-i', '--outdir', out_path, '-T', path] + \
                ['--compare-report', report_path] + \
@@ -103,20 +110,20 @@ class TestFootprint:
 
         if expect_delta_log:
             assert self.RAM_KEY in caplog.text
-            assert self.DELTA_WARNING_RELEASE in caplog.text, \
+            assert re.search(self.DELTA_WARNING_COMPARE, caplog.text), \
                 'Expected footprint deltas not logged.'
         else:
             assert self.RAM_KEY not in caplog.text
-            assert self.DELTA_WARNING_RELEASE not in caplog.text, \
+            assert not re.search(self.DELTA_WARNING_COMPARE, caplog.text), \
                 'Unexpected footprint deltas logged.'
 
     def test_footprint_from_buildlog(self, out_path):
         # First run
-        test_platforms = ['frdm_k64f']
+        test_platforms = ['intel_adl_crb']
         path = os.path.join(TEST_DATA, 'tests', 'dummy', 'device', 'group')
         args = ['-i', '--outdir', out_path, '-T', path] + \
                [] + \
-               ['--show-footprint'] + \
+               ['--enable-size-report'] + \
                [val for pair in zip(
                    ['-p'] * len(test_platforms), test_platforms
                ) for val in pair]
@@ -132,16 +139,16 @@ class TestFootprint:
         with open(os.path.join(out_path, 'twister.json')) as f:
             j = json.load(f)
             for ts in j['testsuites']:
-                if 'reason' not in ts:
+                if TwisterStatus(ts.get('status')) == TwisterStatus.NOTRUN:
                     assert self.RAM_KEY in ts
                     old_values += [ts[self.RAM_KEY]]
 
         # Second run
-        test_platforms = ['frdm_k64f']
+        test_platforms = ['intel_adl_crb']
         path = os.path.join(TEST_DATA, 'tests', 'dummy', 'device', 'group')
         args = ['-i', '--outdir', out_path, '-T', path] + \
                ['--footprint-from-buildlog'] + \
-               ['--show-footprint'] + \
+               ['--enable-size-report'] + \
                [val for pair in zip(
                    ['-p'] * len(test_platforms), test_platforms
                ) for val in pair]
@@ -157,7 +164,7 @@ class TestFootprint:
         with open(os.path.join(out_path, 'twister.json')) as f:
             j = json.load(f)
             for ts in j['testsuites']:
-                if 'reason' not in ts:
+                if TwisterStatus(ts.get('status')) == TwisterStatus.NOTRUN:
                     assert self.RAM_KEY in ts
                     new_values += [ts[self.RAM_KEY]]
 
@@ -177,7 +184,7 @@ class TestFootprint:
     def test_footprint_threshold(self, caplog, out_path, old_ram_multiplier,
                                  threshold, expect_delta_log):
         # First run
-        test_platforms = ['frdm_k64f']
+        test_platforms = ['intel_adl_crb']
         path = os.path.join(TEST_DATA, 'tests', 'dummy', 'device', 'group')
         args = ['-i', '--outdir', out_path, '-T', path] + \
                ['--enable-size-report'] + \
@@ -197,7 +204,7 @@ class TestFootprint:
         with open(os.path.join(out_path, 'twister.json')) as f:
             j = json.load(f)
             for ts in j['testsuites']:
-                if 'reason' not in ts:
+                if TwisterStatus(ts.get('status')) == TwisterStatus.NOTRUN:
                     # We assume positive RAM usage.
                     ts[self.RAM_KEY] *= old_ram_multiplier
         with open(os.path.join(out_path, 'twister.json'), 'w') as f:
@@ -210,7 +217,7 @@ class TestFootprint:
         )
 
         # Second run
-        test_platforms = ['frdm_k64f']
+        test_platforms = ['intel_adl_crb']
         path = os.path.join(TEST_DATA, 'tests', 'dummy')
         args = ['-i', '--outdir', out_path, '-T', path] + \
                [f'--footprint-threshold={threshold}'] + \
@@ -229,11 +236,11 @@ class TestFootprint:
 
         if expect_delta_log:
             assert self.RAM_KEY in caplog.text
-            assert self.DELTA_WARNING_RELEASE in caplog.text, \
+            assert re.search(self.DELTA_WARNING_COMPARE, caplog.text), \
                 'Expected footprint deltas not logged.'
         else:
             assert self.RAM_KEY not in caplog.text
-            assert self.DELTA_WARNING_RELEASE not in caplog.text, \
+            assert not re.search(self.DELTA_WARNING_COMPARE, caplog.text), \
                 'Unexpected footprint deltas logged.'
 
     @pytest.mark.parametrize(
@@ -246,7 +253,7 @@ class TestFootprint:
     )
     def test_show_footprint(self, caplog, out_path, flags, old_ram_multiplier, expect_delta_log):
         # First run
-        test_platforms = ['frdm_k64f']
+        test_platforms = ['intel_adl_crb']
         path = os.path.join(TEST_DATA, 'tests', 'dummy', 'device', 'group')
         args = ['-i', '--outdir', out_path, '-T', path] + \
                ['--enable-size-report'] + \
@@ -266,7 +273,7 @@ class TestFootprint:
         with open(os.path.join(out_path, 'twister.json')) as f:
             j = json.load(f)
             for ts in j['testsuites']:
-                if 'reason' not in ts:
+                if TwisterStatus(ts.get('status')) == TwisterStatus.NOTRUN:
                     # We assume positive RAM usage.
                     ts[self.RAM_KEY] *= old_ram_multiplier
         with open(os.path.join(out_path, 'twister.json'), 'w') as f:
@@ -279,7 +286,7 @@ class TestFootprint:
         )
 
         # Second run
-        test_platforms = ['frdm_k64f']
+        test_platforms = ['intel_adl_crb']
         path = os.path.join(TEST_DATA, 'tests', 'dummy')
         args = ['-i', '--outdir', out_path, '-T', path] + \
                flags + \
@@ -298,12 +305,16 @@ class TestFootprint:
 
         if expect_delta_log:
             assert self.RAM_KEY in caplog.text
-            assert self.DELTA_WARNING_RELEASE in caplog.text, \
+            assert re.search(self.DELTA_DETAIL, caplog.text), \
+                'Expected footprint delta not logged.'
+            assert re.search(self.DELTA_WARNING_COMPARE, caplog.text), \
                 'Expected footprint deltas not logged.'
         else:
             assert self.RAM_KEY not in caplog.text
-            assert self.DELTA_WARNING_RELEASE not in caplog.text, \
-                'Unexpected footprint deltas logged.'
+            assert not re.search(self.DELTA_DETAIL, caplog.text), \
+                'Expected footprint delta not logged.'
+            assert re.search(self.DELTA_WARNING_COMPARE, caplog.text), \
+                'Expected footprint deltas logged.'
 
     @pytest.mark.parametrize(
         'old_ram_multiplier, expect_delta_log',
@@ -315,7 +326,7 @@ class TestFootprint:
     )
     def test_last_metrics(self, caplog, out_path, old_ram_multiplier, expect_delta_log):
         # First run
-        test_platforms = ['frdm_k64f']
+        test_platforms = ['intel_adl_crb']
         path = os.path.join(TEST_DATA, 'tests', 'dummy', 'device', 'group')
         args = ['-i', '--outdir', out_path, '-T', path] + \
                ['--enable-size-report'] + \
@@ -335,7 +346,7 @@ class TestFootprint:
         with open(os.path.join(out_path, 'twister.json')) as f:
             j = json.load(f)
             for ts in j['testsuites']:
-                if 'reason' not in ts:
+                if TwisterStatus(ts.get('status')) == TwisterStatus.NOTRUN:
                     # We assume positive RAM usage.
                     ts[self.RAM_KEY] *= old_ram_multiplier
         with open(os.path.join(out_path, 'twister.json'), 'w') as f:
@@ -348,7 +359,7 @@ class TestFootprint:
         )
 
         # Second run
-        test_platforms = ['frdm_k64f']
+        test_platforms = ['intel_adl_crb']
         path = os.path.join(TEST_DATA, 'tests', 'dummy')
         args = ['-i', '--outdir', out_path, '-T', path] + \
                ['--last-metrics'] + \
@@ -367,11 +378,11 @@ class TestFootprint:
 
         if expect_delta_log:
             assert self.RAM_KEY in caplog.text
-            assert self.DELTA_WARNING_RUN in caplog.text, \
+            assert re.search(self.DELTA_WARNING_RUN, caplog.text), \
                 'Expected footprint deltas not logged.'
         else:
             assert self.RAM_KEY not in caplog.text
-            assert self.DELTA_WARNING_RUN not in caplog.text, \
+            assert not re.search(self.DELTA_WARNING_RUN, caplog.text), \
                 'Unexpected footprint deltas logged.'
 
         second_logs = caplog.records
@@ -379,7 +390,7 @@ class TestFootprint:
         clear_log_in_test()
 
         # Third run
-        test_platforms = ['frdm_k64f']
+        test_platforms = ['intel_adl_crb']
         path = os.path.join(TEST_DATA, 'tests', 'dummy')
         args = ['-i', '--outdir', out_path, '-T', path] + \
                ['--compare-report', report_path] + \
@@ -412,7 +423,7 @@ class TestFootprint:
     )
     def test_all_deltas(self, caplog, out_path, old_ram_multiplier, expect_delta_log):
         # First run
-        test_platforms = ['frdm_k64f']
+        test_platforms = ['intel_adl_crb']
         path = os.path.join(TEST_DATA, 'tests', 'dummy', 'device', 'group')
         args = ['-i', '--outdir', out_path, '-T', path] + \
                ['--enable-size-report'] + \
@@ -432,7 +443,7 @@ class TestFootprint:
         with open(os.path.join(out_path, 'twister.json')) as f:
             j = json.load(f)
             for ts in j['testsuites']:
-                if 'reason' not in ts:
+                if TwisterStatus(ts.get('status')) == TwisterStatus.NOTRUN:
                     # We assume positive RAM usage.
                     ts[self.RAM_KEY] *= old_ram_multiplier
         with open(os.path.join(out_path, 'twister.json'), 'w') as f:
@@ -445,7 +456,7 @@ class TestFootprint:
         )
 
         # Second run
-        test_platforms = ['frdm_k64f']
+        test_platforms = ['intel_adl_crb']
         path = os.path.join(TEST_DATA, 'tests', 'dummy')
         args = ['-i', '--outdir', out_path, '-T', path] + \
                ['--all-deltas'] + \
@@ -464,9 +475,9 @@ class TestFootprint:
 
         if expect_delta_log:
             assert self.RAM_KEY in caplog.text
-            assert self.DELTA_WARNING_RELEASE in caplog.text, \
+            assert re.search(self.DELTA_WARNING_COMPARE, caplog.text), \
                 'Expected footprint deltas not logged.'
         else:
             assert self.RAM_KEY not in caplog.text
-            assert self.DELTA_WARNING_RELEASE not in caplog.text, \
+            assert not re.search(self.DELTA_WARNING_COMPARE, caplog.text), \
                 'Unexpected footprint deltas logged.'

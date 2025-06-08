@@ -24,6 +24,8 @@ extern "C" {
 /**
  * @brief DMA Interface
  * @defgroup dma_interface DMA Interface
+ * @since 1.5
+ * @version 1.0.0
  * @ingroup io_interfaces
  * @{
  */
@@ -215,12 +217,12 @@ struct dma_config {
 	 */
 	uint32_t  complete_callback_en : 1;
 	/**
-	 * Error callback enable
+	 * Error callback disable
 	 *
 	 * - 0b0 error callback enabled
 	 * - 0b1 error callback disabled
 	 */
-	uint32_t  error_callback_en :    1;
+	uint32_t  error_callback_dis :    1;
 	/**
 	 * Source handshake, HW specific
 	 *
@@ -273,7 +275,7 @@ struct dma_config {
 struct dma_status {
 	/** Is the current DMA transfer busy or idle */
 	bool busy;
-	/** Direction fo the transfer */
+	/** Direction for the transfer */
 	enum dma_channel_direction dir;
 	/** Pending length to be transferred in bytes, HW specific */
 	uint32_t pending_length;
@@ -350,6 +352,20 @@ typedef int (*dma_api_get_attribute)(const struct device *dev, uint32_t type, ui
 typedef bool (*dma_api_chan_filter)(const struct device *dev,
 				int channel, void *filter_param);
 
+/**
+ * @typedef dma_chan_release
+ * @brief channel release function call
+ *
+ * used to release channel resources "allocated" during the
+ * request phase. These resources can refer to enabled PDs, IRQs
+ * etc...
+ *
+ * @param dev Pointer to the DMA device instance
+ * @param channel channel id to use
+ */
+typedef void (*dma_api_chan_release)(const struct device *dev,
+				     uint32_t channel);
+
 __subsystem struct dma_driver_api {
 	dma_api_config config;
 	dma_api_reload reload;
@@ -360,6 +376,7 @@ __subsystem struct dma_driver_api {
 	dma_api_get_status get_status;
 	dma_api_get_attribute get_attribute;
 	dma_api_chan_filter chan_filter;
+	dma_api_chan_release chan_release;
 };
 /**
  * @endcond
@@ -536,7 +553,9 @@ static inline int z_impl_dma_resume(const struct device *dev, uint32_t channel)
  * request DMA channel resources
  * return -EINVAL if there is no valid channel available.
  *
- * @funcprops \isr_ok
+ * @note It is safe to use this function in contexts where blocking
+ * is not allowed, e.g. ISR, provided the implementation of the filter
+ * function does not block.
  *
  * @param dev Pointer to the device structure for the driver instance.
  * @param filter_param filter function parameter
@@ -581,7 +600,9 @@ static inline int z_impl_dma_request_channel(const struct device *dev,
  *
  * release DMA channel resources
  *
- * @funcprops \isr_ok
+ * @note It is safe to use this function in contexts where blocking
+ * is not allowed, e.g. ISR, provided the implementation of the release
+ * function does not block.
  *
  * @param dev  Pointer to the device structure for the driver instance.
  * @param channel  channel number
@@ -593,6 +614,8 @@ __syscall void dma_release_channel(const struct device *dev,
 static inline void z_impl_dma_release_channel(const struct device *dev,
 					      uint32_t channel)
 {
+	const struct dma_driver_api *api =
+		(const struct dma_driver_api *)dev->api;
 	struct dma_context *dma_ctx = (struct dma_context *)dev->data;
 
 	if (dma_ctx->magic != DMA_MAGIC) {
@@ -600,6 +623,10 @@ static inline void z_impl_dma_release_channel(const struct device *dev,
 	}
 
 	if ((int)channel < dma_ctx->dma_channels) {
+		if (api->chan_release) {
+			api->chan_release(dev, channel);
+		}
+
 		atomic_clear_bit(dma_ctx->atomic, channel);
 	}
 
@@ -786,6 +813,6 @@ static inline uint32_t dma_burst_index(uint32_t burst)
 }
 #endif
 
-#include <syscalls/dma.h>
+#include <zephyr/syscalls/dma.h>
 
 #endif /* ZEPHYR_INCLUDE_DRIVERS_DMA_H_ */

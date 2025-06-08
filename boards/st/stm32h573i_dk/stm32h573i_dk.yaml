@@ -15,11 +15,14 @@ supported:
   - dma
   - adc
   - dac
+  - netif:eth
   - pwm
   - counter
   - spi
   - octospi
   - can
   - usb_device
-  - usb
+  - i2c
+  - rtc
+  - usbd
 vendor: st

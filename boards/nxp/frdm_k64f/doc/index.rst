@@ -1,7 +1,4 @@
-.. _frdm_k64f:
-
-NXP FRDM-K64F
-##############
+.. zephyr:board:: frdm_k64f
 
 Overview
 ********
@@ -18,10 +15,6 @@ K63, and K24 MCUs.
 - OpenSDAv2, the NXP open source hardware embedded serial and debug adapter
   running an open source bootloader, offers options for serial communication,
   flash programming, and run-control debugging
-
-.. image:: frdm_k64f.jpg
-   :align: center
-   :alt: FRDM-K64F
 
 Hardware
 ********
@@ -61,60 +54,9 @@ Supported Features
 NXP considers the FRDM-K64F as the superset board for the Kinetis K
 series of MCUs.  This board is a focus for NXP's Full Platform Support for
 Zephyr, to better enable the entire Kinetis K series.  NXP prioritizes enabling
-this board with new support for Zephyr features.  The frdm_k64f board
-configuration supports the following hardware features:
+this board with new support for Zephyr features.
 
-+-----------+------------+-------------------------------------+
-| Interface | Controller | Driver/Component                    |
-+===========+============+=====================================+
-| NVIC      | on-chip    | nested vector interrupt controller  |
-+-----------+------------+-------------------------------------+
-| SYSTICK   | on-chip    | systick                             |
-+-----------+------------+-------------------------------------+
-| PINMUX    | on-chip    | pinmux                              |
-+-----------+------------+-------------------------------------+
-| GPIO      | on-chip    | gpio                                |
-+-----------+------------+-------------------------------------+
-| I2C       | on-chip    | i2c                                 |
-+-----------+------------+-------------------------------------+
-| SPI       | on-chip    | spi                                 |
-+-----------+------------+-------------------------------------+
-| WATCHDOG  | on-chip    | watchdog                            |
-+-----------+------------+-------------------------------------+
-| ADC       | on-chip    | adc                                 |
-+-----------+------------+-------------------------------------+
-| DAC       | on-chip    | dac                                 |
-+-----------+------------+-------------------------------------+
-| PWM       | on-chip    | pwm                                 |
-+-----------+------------+-------------------------------------+
-| ETHERNET  | on-chip    | ethernet                            |
-+-----------+------------+-------------------------------------+
-| UART      | on-chip    | serial port-polling;                |
-|           |            | serial port-interrupt               |
-+-----------+------------+-------------------------------------+
-| FLASH     | on-chip    | soc flash                           |
-+-----------+------------+-------------------------------------+
-| USB       | on-chip    | USB device                          |
-+-----------+------------+-------------------------------------+
-| SENSOR    | off-chip   | fxos8700 polling;                   |
-|           |            | fxos8700 trigger                    |
-+-----------+------------+-------------------------------------+
-| CAN       | on-chip    | can                                 |
-+-----------+------------+-------------------------------------+
-| RTC       | on-chip    | rtc                                 |
-+-----------+------------+-------------------------------------+
-| DMA       | on-chip    | dma                                 |
-+-----------+------------+-------------------------------------+
-| RNGA      | on-chip    | entropy;                            |
-|           |            | random                              |
-+-----------+------------+-------------------------------------+
-| FTFE      | on-chip    | flash programming                   |
-+-----------+------------+-------------------------------------+
-
-The default configuration can be found in
-:zephyr_file:`boards/nxp/frdm_k64f/frdm_k64f_defconfig`
-
-Other hardware features are not currently supported by the port.
+.. zephyr:board-supported-hw::
 
 Connections and IOs
 ===================
@@ -228,6 +170,8 @@ use the CAN bus, an external CAN bus transceiver must be connected to ``PTB18``
 Programming and Debugging
 *************************
 
+.. zephyr:board-supported-runners::
+
 Build and flash applications as usual (see :ref:`build_an_application` and
 :ref:`application_run` for more details).
 
@@ -307,7 +251,7 @@ etc.):
 Flashing
 ========
 
-Here is an example for the :ref:`hello_world` application.
+Here is an example for the :zephyr:code-sample:`hello_world` application.
 
 .. zephyr-app-commands::
    :zephyr-app: samples/hello_world
@@ -325,7 +269,7 @@ see the following message in the terminal:
 Debugging
 =========
 
-Here is an example for the :ref:`hello_world` application.
+Here is an example for the :zephyr:code-sample:`hello_world` application.
 
 .. zephyr-app-commands::
    :zephyr-app: samples/hello_world
@@ -363,6 +307,9 @@ of pyocd commands:
    Resetting target
    >>> quit
 
+.. include:: ../../common/board-footer.rst
+   :start-after: nxp-board-footer
+
 .. _FRDM-K64F Website:
    https://www.nxp.com/support/developer-resources/evaluation-and-development-boards/freedom-development-boards/mcu-boards/freedom-development-platform-for-kinetis-k64-k63-and-k24-mcus:FRDM-K64F
 
@@ -389,13 +336,3 @@ of pyocd commands:
 
 .. _OpenSDA Serial and Debug Adapter:
    https://www.nxp.com/design/microcontrollers-developer-resources/ides-for-kinetis-mcus/opensda-serial-and-debug-adapter:OPENSDA#FRDM-K64F
-
-Experimental ENET Driver
-========================
-
-Current default ethernet driver is eth_mcux, with binding `nxp,kinetis-ethernet`. There is a new
-driver with binding `nxp,enet`, which is experimental and undergoing development, but will have
-enhanced capability, such as not hardcoding code for only one phy in the driver like eth_mcux.
-
-To build for this EVK with the new driver, include the experimental overlay to west build with
-the option `-DEXTRA_DTC_OVERLAY_FILE=nxp,enet-experimental.overlay`.

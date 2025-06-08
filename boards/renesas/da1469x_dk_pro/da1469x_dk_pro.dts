@@ -6,6 +6,7 @@
 /dts-v1/;
 #include <renesas/smartbond/da14699.dtsi>
 #include "da1469x_dk_pro-pinctrl.dtsi"
+#include <zephyr/dt-bindings/input/input-event-codes.h>
 
 / {
 	model = "DA1469x series Development Kit Pro";
@@ -19,12 +20,26 @@
 		zephyr,console = &uart;
 		zephyr,shell-uart = &uart;
 		zephyr,code-partition = &slot0_partition;
+		zephyr,bt-hci = &bt_hci_da1469x;
+	};
+
+	lvgl_pointer {
+		compatible = "zephyr,lvgl-pointer-input";
 	};
 
 	leds {
 		compatible = "gpio-leds";
 		red_led: led_0 {
 			gpios = <&gpio1 1 GPIO_ACTIVE_HIGH>;
+		};
+	};
+
+	gpio_keys {
+		compatible = "gpio-keys";
+		user_button: button {
+			label = "User (K1)";
+			gpios = <&gpio0 6 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+			zephyr,code = <INPUT_KEY_0>;
 		};
 	};
 
@@ -61,6 +76,7 @@
 	aliases {
 		led0 = &red_led;
 		watchdog0 = &wdog;
+		sw0 = &user_button;
 	};
 
 	sysclk: system-clock {
@@ -91,7 +107,7 @@
 			label = "image-0";
 			reg = <0x0000c000 0x00076000>;
 		};
-		slot1_partition: partition@80000 {
+		slot1_partition: partition@82000 {
 			label = "image-1";
 			reg = <0x00082000 0x00076000>;
 		};
@@ -115,6 +131,7 @@
 	status = "okay";
 	pinctrl-0 = <&uart_default>;
 	pinctrl-names = "default";
+	rx-wake-gpios = <&gpio0 8 GPIO_ACTIVE_LOW>;
 };
 
 zephyr_udc0: &usbd {
@@ -134,6 +151,14 @@ zephyr_udc0: &usbd {
 	status = "okay";
 };
 
+/*
+ * On board level we switch to XTAL32K and
+ * so RCX can be disabled.
+ */
+&rcx {
+	status = "disabled";
+};
+
 &lp_clk {
 	clock-src = <&xtal32k>;
 };
@@ -142,36 +167,30 @@ zephyr_udc0: &usbd {
 	clock-src = <&xtal32m>;
 };
 
-&pll {
-	status = "okay";
-};
 &i2c {
-	status = "okay";
 	pinctrl-0 = <&i2c_default>;
-	pinctrl-names = "default";
+	pinctrl-1 = <&i2c_sleep>;
+	pinctrl-names = "default", "sleep";
 };
 
 &i2c2 {
-	status = "okay";
 	pinctrl-0 = <&i2c2_default>;
-	pinctrl-names = "default";
+	pinctrl-1 = <&i2c2_sleep>;
+	pinctrl-names = "default", "sleep";
 };
 
 &spi {
-	status = "okay";
 	pinctrl-0 = <&spi_controller>;
-	pinctrl-names = "default";
+	pinctrl-1 = <&spi_sleep>;
+	pinctrl-names = "default", "sleep";
 };
 
 &spi2 {
-	status = "okay";
 	pinctrl-0 = <&spi2_controller>;
-	pinctrl-names = "default";
+	pinctrl-1 = <&spi2_sleep>;
+	pinctrl-names = "default", "sleep";
 };
 
-&mipi_dbi {
-	pinctrl-0 = <&mipi_dbi_default>;
-	pinctrl-1 = <&mipi_dbi_read>;
-	pinctrl-2 = <&mipi_dbi_sleep>;
-	pinctrl-names = "default", "read", "sleep";
+&bt_hci_da1469x {
+	status = "okay";
 };

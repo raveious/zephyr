@@ -1,17 +1,10 @@
-.. _lpcxpresso11u68:
-
-NXP LPCXpresso11U68
-###################
+.. zephyr:board:: lpcxpresso11u68
 
 Overview
 ********
 
 The LPCXpresso11u68 development board uses an NXP LPC11U68 MCU based
 on an ARM Cortex-M0+ core.
-
-.. figure:: lpcxpresso11u68.jpg
-   :align: center
-   :alt: LPCXpresso11U68
 
 Hardware
 ********
@@ -49,30 +42,7 @@ More information can be found here:
 Supported Features
 ==================
 
-The lpcxpresso11U68 supports the following features:
-
-+-----------+------------+-------------------------------------+
-| Interface | Controller | Driver/Component                    |
-+===========+============+=====================================+
-| NVIC      | on-chip    | nested vector interrupt controller  |
-+-----------+------------+-------------------------------------+
-| SYSTICK   | on-chip    | systick                             |
-+-----------+------------+-------------------------------------+
-| IOCON     | on-chip    | pinmux                              |
-+-----------+------------+-------------------------------------+
-| CLOCK     | on-chip    | clock and reset control             |
-+-----------+------------+-------------------------------------+
-| GPIO      | on-chip    | gpio                                |
-+-----------+------------+-------------------------------------+
-| I2C       | on-chip    | i2c master/slave controller         |
-+-----------+------------+-------------------------------------+
-| UART      | on-chip    | serial port-polling;                |
-|           |            | serial port interrupt               |
-+-----------+------------+-------------------------------------+
-| EEPROM    | on-chip    | eeprom                              |
-+-----------+------------+-------------------------------------+
-
-Other hardware is not yet supported on Zephyr.
+.. zephyr:board-supported-hw::
 
 Connections and IOs
 ===================
@@ -101,6 +71,8 @@ The IOCON controller can be used to configure the LPC11U68 pins.
 Programming and Debugging
 *************************
 
+.. zephyr:board-supported-runners::
+
 Flashing
 ========
 
@@ -109,7 +81,7 @@ probe (based on a NXP LPC43xx MCU). This MCU provides either a CMSIS-DAP or
 a J-Link interface. It depends on the embedded firmware image. The default
 OpenOCD configuration supports the CMSIS-DAP interface. If you want to
 switch to J-Link, then you need to edit the
-``boards/arm/lpcxpresso11u68/support/openocd.cfg`` file and to replace::
+:zephyr_file:`boards/nxp/lpcxpresso11u68/support/openocd.cfg` file and to replace::
 
    source [find interface/cmsis-dap.cfg]
 
@@ -146,6 +118,9 @@ References
 - `LPC11U6X Reference Manual`_
 - `LPCXPRESSO11U68 Website`_
 - `LPCXPRESSO11U68 Schematics`_
+
+.. include:: ../../common/board-footer.rst
+   :start-after: nxp-board-footer
 
 .. _LPC11UXX SoC Website:
    https://www.nxp.com/products/processors-and-microcontrollers/arm-microcontrollers/general-purpose-mcus/lpc1100-cortex-m0-plus-m0/scalable-entry-level-32-bit-microcontroller-mcu-based-on-arm-cortex-m0-plus-and-cortex-m0-cores:LPC11U00

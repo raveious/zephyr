@@ -11,12 +11,11 @@
 #include <soc/soc_caps.h>
 #include <esp32s3/rom/ets_sys.h>
 #include <esp32s3/rom/spi_flash.h>
-#include "esp32s3/rom/cache.h"
+#include <esp32s3/rom/cache.h>
 #include <esp_rom_uart.h>
-#include "soc/extmem_reg.h"
-#include "soc/cache_memory.h"
-#include "hal/cpu_hal.h"
-#include "hal/cpu_types.h"
+#include <soc/extmem_reg.h>
+#include <soc/ext_mem_defs.h>
+#include <hal/cpu_hal.h>
 #include <esp_rom_sys.h>
 
 #include <zephyr/types.h>
@@ -24,9 +23,10 @@
 #include <zephyr/arch/xtensa/arch.h>
 
 #include <xtensa/core-macros.h>
-#include <esp32s3/clk.h>
+#include <esp_private/esp_clk.h>
 
-void __esp_platform_start(void);
+void __esp_platform_mcuboot_start(void);
+void __esp_platform_app_start(void);
 
 static inline void esp32_set_mask32(uint32_t v, uint32_t mem_addr)
 {
@@ -73,9 +73,5 @@ extern int esp_rom_Cache_Ibus_MMU_Set(uint32_t ext_ram, uint32_t vaddr, uint32_t
 /* ROM functions which read/write internal i2c control bus for PLL, APLL */
 extern uint8_t esp_rom_i2c_readReg(uint8_t block, uint8_t host_id, uint8_t reg_add);
 extern void esp_rom_i2c_writeReg(uint8_t block, uint8_t host_id, uint8_t reg_add, uint8_t data);
-
-/* cache initialization functions */
-void esp_config_instruction_cache_mode(void);
-void esp_config_data_cache_mode(void);
 
 #endif /* __SOC_H__ */

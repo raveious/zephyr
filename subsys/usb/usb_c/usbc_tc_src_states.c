@@ -122,11 +122,16 @@ void tc_unattached_wait_src_exit(void *obj)
 void tc_attach_wait_src_entry(void *obj)
 {
 	struct tc_sm_t *tc = (struct tc_sm_t *)obj;
+	const struct device *dev = tc->dev;
+	struct usbc_port_data *data = dev->data;
+	const struct device *vbus = data->vbus;
 
 	LOG_INF("AttachWait.SRC");
 
 	/* Initialize the cc state to open */
 	tc->cc_state = TC_CC_NONE;
+
+	usbc_vbus_enable(vbus, true);
 }
 
 void tc_attach_wait_src_run(void *obj)
@@ -239,7 +244,7 @@ void tc_attached_src_entry(void *obj)
 	}
 
 	/* Start sourcing VBUS */
-	if (data->policy_cb_src_en(dev, true) == 0) {
+	if (usbc_policy_src_en(dev, tcpc, true) == 0) {
 		/* Start sourcing VCONN */
 		if (policy_check(dev, CHECK_VCONN_CONTROL)) {
 			if (tcpc_set_vconn(tcpc, true) == 0) {
@@ -304,14 +309,13 @@ void tc_attached_src_exit(void *obj)
 	const struct device *tcpc = data->tcpc;
 	int ret;
 
-	__ASSERT(data->policy_cb_src_en != NULL,
-			"policy_cb_src_en must not be NULL");
-
 	/* Disable PD */
 	tc_pd_enable(dev, false);
 
 	/* Stop sourcing VBUS */
-	data->policy_cb_src_en(dev, false);
+	if (usbc_policy_src_en(dev, tcpc, false) != 0) {
+		LOG_ERR("Couldn't disable VBUS source");
+	}
 
 	/* Disable the VBUS sourcing by the PPC */
 	if (data->ppc != NULL) {

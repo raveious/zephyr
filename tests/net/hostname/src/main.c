@@ -23,7 +23,7 @@ LOG_MODULE_REGISTER(net_test, NET_LOG_LEVEL);
 #include <zephyr/ztest.h>
 
 #include <zephyr/net/ethernet.h>
-#include <zephyr/net/buf.h>
+#include <zephyr/net_buf.h>
 #include <zephyr/net/net_ip.h>
 #include <zephyr/net/net_if.h>
 
@@ -82,10 +82,10 @@ static uint8_t *net_iface_get_mac(const struct device *dev)
 		data->mac_addr[2] = 0x5E;
 		data->mac_addr[3] = 0x00;
 		data->mac_addr[4] = 0x53;
-		data->mac_addr[5] = sys_rand32_get();
+		data->mac_addr[5] = sys_rand8_get();
 	}
 
-	data->ll_addr.addr = data->mac_addr;
+	memcpy(data->ll_addr.addr, data->mac_addr, sizeof(data->mac_addr));
 	data->ll_addr.len = 6U;
 
 	return data->mac_addr;
@@ -173,7 +173,7 @@ static void eth_fake_iface_init(struct net_if *iface)
 	ctx->mac_address[2] = 0x5E;
 	ctx->mac_address[3] = 0x00;
 	ctx->mac_address[4] = 0x53;
-	ctx->mac_address[5] = sys_rand32_get();
+	ctx->mac_address[5] = sys_rand8_get();
 
 	net_if_set_link_addr(iface, ctx->mac_address,
 			     sizeof(ctx->mac_address),

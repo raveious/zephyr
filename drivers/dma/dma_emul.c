@@ -70,11 +70,6 @@ static void dma_emul_work_handler(struct k_work *work);
 
 LOG_MODULE_REGISTER(dma_emul, CONFIG_DMA_LOG_LEVEL);
 
-static inline bool dma_emul_xfer_is_error_status(int status)
-{
-	return status < 0;
-}
-
 static inline const char *const dma_emul_channel_state_to_string(enum dma_emul_channel_state state)
 {
 	switch (state) {
@@ -129,7 +124,7 @@ static const char *dma_emul_xfer_config_to_string(const struct dma_config *cfg)
 		 "\n\tslot: %u"
 		 "\n\tchannel_direction: %u"
 		 "\n\tcomplete_callback_en: %u"
-		 "\n\terror_callback_en: %u"
+		 "\n\terror_callback_dis: %u"
 		 "\n\tsource_handshake: %u"
 		 "\n\tdest_handshake: %u"
 		 "\n\tchannel_priority: %u"
@@ -148,7 +143,7 @@ static const char *dma_emul_xfer_config_to_string(const struct dma_config *cfg)
 		 "\n\tdma_callback: %p"
 		 "\n}",
 		 cfg->dma_slot, cfg->channel_direction, cfg->complete_callback_en,
-		 cfg->error_callback_en, cfg->source_handshake, cfg->dest_handshake,
+		 cfg->error_callback_dis, cfg->source_handshake, cfg->dest_handshake,
 		 cfg->channel_priority, cfg->source_chaining_en, cfg->dest_chaining_en,
 		 cfg->linked_channel, cfg->cyclic, cfg->_reserved, cfg->source_data_size,
 		 cfg->dest_data_size, cfg->source_burst_length, cfg->dest_burst_length,
@@ -248,11 +243,11 @@ static void dma_emul_work_handler(struct k_work *work)
 
 				if (state == DMA_EMUL_CHANNEL_STOPPED) {
 					LOG_DBG("asynchronously canceled");
-					if (xfer_config.error_callback_en) {
+					if (!xfer_config.error_callback_dis) {
 						xfer_config.dma_callback(dev, xfer_config.user_data,
 									 channel, -ECANCELED);
 					} else {
-						LOG_DBG("error_callback_en is not set (async "
+						LOG_DBG("error_callback_dis is not set (async "
 							"cancel)");
 					}
 					goto out;
@@ -513,7 +508,7 @@ static bool dma_emul_chan_filter(const struct device *dev, int channel, void *fi
 	return success;
 }
 
-static const struct dma_driver_api dma_emul_driver_api = {
+static DEVICE_API(dma, dma_emul_driver_api) = {
 	.config = dma_emul_configure,
 	.reload = dma_emul_reload,
 	.start = dma_emul_start,
@@ -526,7 +521,7 @@ static const struct dma_driver_api dma_emul_driver_api = {
 };
 
 #ifdef CONFIG_PM_DEVICE
-static int gpio_emul_pm_device_pm_action(const struct device *dev, enum pm_device_action action)
+static int dma_emul_pm_device_pm_action(const struct device *dev, enum pm_device_action action)
 {
 	ARG_UNUSED(dev);
 	ARG_UNUSED(action);

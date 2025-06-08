@@ -14,7 +14,7 @@
 #include <esp32s2/rom/ets_sys.h>
 #include <esp32s2/rom/spi_flash.h>
 #include <esp32s2/rom/cache.h>
-#include <esp32s2/clk.h>
+#include <esp_private/esp_clk.h>
 #include <esp_rom_sys.h>
 
 #include <zephyr/types.h>
@@ -22,7 +22,8 @@
 #include <zephyr/arch/xtensa/arch.h>
 #include <stdlib.h>
 
-void __esp_platform_start(void);
+void __esp_platform_mcuboot_start(void);
+void __esp_platform_app_start(void);
 
 static inline uint32_t esp_core_id(void)
 {

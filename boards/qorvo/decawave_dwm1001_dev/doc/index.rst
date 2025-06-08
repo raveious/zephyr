@@ -1,7 +1,4 @@
-.. _decawave_dwm1001_dev:
-
-Decawave DWM1001
-#################
+.. zephyr:board:: decawave_dwm1001_dev
 
 Overview
 ********
@@ -11,11 +8,14 @@ connector and charging circuit, LEDs, buttons, Raspberry-Pi and USB
 connector. In addition, the board comes with J-Link OB adding
 debugging and Virtual COM Port capabilities.
 
-See `Decawave DWM1001-DEV website`_ for more information about the development
-board, `Decawave DWM1001 website`_ about the board itself, and `nRF52832 website`_ for the official reference on the IC itself.
+See `Qorvo (Decawave) DWM1001-DEV website`_ for more information about the development
+board, `Qorvo (Decawave) DWM1001 website`_ about the board itself, and `nRF52832 website`_ for the
+official reference on the IC itself.
 
 Programming and Debugging
 *************************
+
+.. zephyr:board-supported-runners::
 
 Applications for the ``decawave_dwm1001_dev`` board configuration can be built,
 flashed, and debugged in the usual way. See :ref:`build_an_application` and
@@ -30,7 +30,7 @@ found in :ref:`nordic_segger_flashing`. Then build and flash
 applications as usual (see :ref:`build_an_application` and
 :ref:`application_run` for more details).
 
-Here is an example for the :ref:`hello_world` application.
+Here is an example for the :zephyr:code-sample:`hello_world` application.
 
 First, run your favorite terminal program to listen for output.
 
@@ -53,5 +53,5 @@ References
 .. target-notes::
 
 .. _nRF52832 website: https://www.nordicsemi.com/Products/Low-power-short-range-wireless/nRF52832
-.. _Decawave DWM1001 website: https://www.decawave.com/product/dwm1001-module
-.. _Decawave DWM1001-DEV website: https://www.decawave.com/product/dwm1001-development-board
+.. _Qorvo (Decawave) DWM1001 website: https://www.qorvo.com/products/p/DWM1001C
+.. _Qorvo (Decawave) DWM1001-DEV website: https://www.qorvo.com/products/p/DWM1001-DEV

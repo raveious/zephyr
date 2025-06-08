@@ -299,7 +299,7 @@ You should see following confirmation on your Linux host:
    usb 1-2.1: SerialNumber: 3574364C3034
 
 Then build and flash an application. Here is an example for the
-:ref:`hello_world` application.
+:zephyr:code-sample:`hello_world` application.
 
 .. zephyr-app-commands::
    :zephyr-app: samples/hello_world
@@ -338,16 +338,16 @@ in general, see :ref:`build_an_application`.
 
 #. Install the dfu-util flashing app, as described above.
 
-#. Build and flash the ``samples/bluetooth/ipsp`` application for
+#. Build and flash the ``samples/bluetooth/peripheral_hr`` application for
    96b_carbon. See the instructions above for how to put your board
    into DFU mode if you haven't done this before:
 
    .. zephyr-app-commands::
-      :zephyr-app: samples/bluetooth/ipsp
+      :zephyr-app: samples/bluetooth/peripheral_hr
       :board: 96b_carbon/stm32f401xe
       :goals: build flash
 
-#. Refer to the instructions in :ref:`bluetooth-ipsp-sample` for how
+#. Refer to the instructions in :zephyr:code-sample:`ble_peripheral_hr` for how
    to verify functionality.
 
 Congratulations! Your 96Boards Carbon now has Bluetooth

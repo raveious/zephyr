@@ -44,6 +44,12 @@ LOG_MODULE_REGISTER(LOG_MODULE_NAME, CONFIG_COUNTER_LOG_LEVEL);
 #define CC_ADJUSTED_OFFSET 16
 #define CC_ADJ_MASK(chan) (BIT(chan + CC_ADJUSTED_OFFSET))
 
+#if defined(CONFIG_SOC_SERIES_BSIM_NRFXX)
+#define MAYBE_CONST_CONFIG
+#else
+#define MAYBE_CONST_CONFIG const
+#endif
+
 struct counter_nrfx_data {
 	counter_top_callback_t top_cb;
 	void *top_user_data;
@@ -381,7 +387,9 @@ static int ppi_setup(const struct device *dev, uint8_t chan)
 
 	nrfy_rtc_event_enable(rtc, NRF_RTC_CHANNEL_INT_MASK(chan));
 #ifdef DPPI_PRESENT
-	result = nrfx_dppi_channel_alloc(&data->ppi_ch);
+	nrfx_dppi_t dppi = NRFX_DPPI_INSTANCE(0);
+
+	result = nrfx_dppi_channel_alloc(&dppi, &data->ppi_ch);
 	if (result != NRFX_SUCCESS) {
 		ERR("Failed to allocate PPI channel.");
 		return -ENODEV;
@@ -389,7 +397,7 @@ static int ppi_setup(const struct device *dev, uint8_t chan)
 
 	nrfy_rtc_subscribe_set(rtc, NRF_RTC_TASK_CLEAR, data->ppi_ch);
 	nrfy_rtc_publish_set(rtc, evt, data->ppi_ch);
-	(void)nrfx_dppi_channel_enable(data->ppi_ch);
+	(void)nrfx_dppi_channel_enable(&dppi, data->ppi_ch);
 #else /* DPPI_PRESENT */
 	uint32_t evt_addr;
 	uint32_t task_addr;
@@ -423,11 +431,12 @@ static void ppi_free(const struct device *dev, uint8_t chan)
 	nrfy_rtc_event_disable(rtc, NRF_RTC_CHANNEL_INT_MASK(chan));
 #ifdef DPPI_PRESENT
 	nrf_rtc_event_t evt = NRF_RTC_CHANNEL_EVENT_ADDR(chan);
+	nrfx_dppi_t dppi = NRFX_DPPI_INSTANCE(0);
 
-	(void)nrfx_dppi_channel_disable(ppi_ch);
+	(void)nrfx_dppi_channel_disable(&dppi, ppi_ch);
 	nrfy_rtc_subscribe_clear(rtc, NRF_RTC_TASK_CLEAR);
 	nrfy_rtc_publish_clear(rtc, evt);
-	(void)nrfx_dppi_channel_free(ppi_ch);
+	(void)nrfx_dppi_channel_free(&dppi, ppi_ch);
 #else /* DPPI_PRESENT */
 	(void)nrfx_ppi_channel_disable(ppi_ch);
 	(void)nrfx_ppi_channel_free(ppi_ch);
@@ -534,11 +543,20 @@ static uint32_t get_pending_int(const struct device *dev)
 
 static int init_rtc(const struct device *dev, uint32_t prescaler)
 {
-	const struct counter_nrfx_config *nrfx_config = dev->config;
+	MAYBE_CONST_CONFIG struct counter_nrfx_config *nrfx_config =
+			(MAYBE_CONST_CONFIG struct counter_nrfx_config *) dev->config;
 	struct counter_nrfx_data *data = dev->data;
 	struct counter_top_cfg top_cfg = {
 		.ticks = NRF_RTC_COUNTER_MAX
 	};
+
+#if defined(CONFIG_SOC_SERIES_BSIM_NRFXX)
+	/* For simulated devices we need to convert the hardcoded DT address from the real
+	 * peripheral into the correct one for simulation
+	 */
+	nrfx_config->rtc = nhw_convert_periph_base_addr(nrfx_config->rtc);
+#endif
+
 	NRF_RTC_Type *rtc = nrfx_config->rtc;
 	int err;
 
@@ -645,8 +663,10 @@ static void alarm_irq_handle(const struct device *dev, uint32_t chan)
 	}
 }
 
-static void irq_handler(const struct device *dev)
+static void irq_handler(const void *arg)
 {
+	const struct device *dev = arg;
+
 	top_irq_handle(dev);
 
 	for (uint32_t i = 0; i < counter_get_num_of_channels(dev); i++) {
@@ -654,7 +674,7 @@ static void irq_handler(const struct device *dev)
 	}
 }
 
-static const struct counter_driver_api counter_nrfx_driver_api = {
+static DEVICE_API(counter, counter_nrfx_driver_api) = {
 	.start = start,
 	.stop = stop,
 	.get_value = get_value,
@@ -703,7 +723,8 @@ static const struct counter_driver_api counter_nrfx_driver_api = {
 	static struct counter_nrfx_ch_data				       \
 		counter##idx##_ch_data[DT_INST_PROP(idx, cc_num)];	       \
 	LOG_INSTANCE_REGISTER(LOG_MODULE_NAME, idx, CONFIG_COUNTER_LOG_LEVEL); \
-	static const struct counter_nrfx_config nrfx_counter_##idx##_config = {\
+	static MAYBE_CONST_CONFIG					       \
+		struct counter_nrfx_config nrfx_counter_##idx##_config = {     \
 		.info = {						       \
 			.max_top_value = NRF_RTC_COUNTER_MAX,		       \
 			.freq = DT_INST_PROP(idx, clock_frequency) /	       \

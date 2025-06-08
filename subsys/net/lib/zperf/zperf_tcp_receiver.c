@@ -39,9 +39,9 @@ static struct sockaddr tcp_server_addr;
 static struct zsock_pollfd fds[SOCK_ID_MAX];
 static struct sockaddr sock_addr[SOCK_ID_MAX];
 
-static void tcp_svc_handler(struct k_work *work);
+static void tcp_svc_handler(struct net_socket_service_event *pev);
 
-NET_SOCKET_SERVICE_SYNC_DEFINE_STATIC(svc_tcp, NULL, tcp_svc_handler,
+NET_SOCKET_SERVICE_SYNC_DEFINE_STATIC(svc_tcp, tcp_svc_handler,
 				      SOCK_ID_MAX);
 
 static void tcp_received(const struct sockaddr *addr, size_t datalen)
@@ -231,10 +231,8 @@ error:
 	return ret;
 }
 
-static void tcp_svc_handler(struct k_work *work)
+static void tcp_svc_handler(struct net_socket_service_event *pev)
 {
-	struct net_socket_service_event *pev =
-		CONTAINER_OF(work, struct net_socket_service_event, work);
 	int ret;
 
 	ret = tcp_recv_data(pev);
@@ -278,12 +276,15 @@ out:
 static int zperf_tcp_receiver_init(void)
 {
 	int ret;
+	int family;
 
 	for (int i = 0; i < ARRAY_SIZE(fds); i++) {
 		fds[i].fd = -1;
 	}
 
-	if (IS_ENABLED(CONFIG_NET_IPV4)) {
+	family = tcp_server_addr.sa_family;
+
+	if (IS_ENABLED(CONFIG_NET_IPV4) && (family == AF_INET || family == AF_UNSPEC)) {
 		struct sockaddr_in *in4_addr = zperf_get_sin();
 		const struct in_addr *addr = NULL;
 
@@ -329,7 +330,7 @@ use_any_ipv4:
 		}
 	}
 
-	if (IS_ENABLED(CONFIG_NET_IPV6)) {
+	if (IS_ENABLED(CONFIG_NET_IPV6) && (family == AF_INET6 || family == AF_UNSPEC)) {
 		struct sockaddr_in6 *in6_addr = zperf_get_sin6();
 		const struct in6_addr *addr = NULL;
 

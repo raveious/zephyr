@@ -46,6 +46,9 @@ Kernel
   :kconfig:option:`CONFIG_HEAP_MEM_POOL_IGNORE_MIN` option has been introduced (which defaults
   being disabled).
 
+* STM32H7 and STM32F7 should now activate the cache (Icache and Dcache) by setting explicitly
+  the  ``CONFIG_CACHE_MANAGEMENT`` to ``y``.
+
 Boards
 ******
 
@@ -238,7 +241,7 @@ Bluetooth HCI
 Controller Area Network (CAN)
 =============================
 
-* The native Linux SocketCAN driver, which can now be used in both :ref:`native_posix<native_posix>`
+* The native Linux SocketCAN driver, which can now be used in both ``native_posix``
   and :ref:`native_sim<native_sim>` with or without an embedded C-library, has been renamed to
   reflect this:
 
@@ -476,6 +479,9 @@ Bluetooth
 * `BT_ISO_TIMESTAMP_NONE` has been removed and the `ts` parameter of :c:func:`bt_iso_chan_send` has
   as well. :c:func:`bt_iso_chan_send` now always sends without timestamp. To send with a timestamp,
   :c:func:`bt_iso_chan_send_ts` can be used.
+* The ``CONFIG_BT_HCI_RESERVE`` and ``CONFIG_BT_HCI_RAW_RESERVE`` Kconfig options were removed. All
+  buffers get by default one byte of headroom now, which HCI transport implementations can rely on
+  (whether they need it or not).
 
 Bluetooth Mesh
 ==============
@@ -638,7 +644,7 @@ Shell
 * :kconfig:option:`CONFIG_SHELL_BACKEND_SERIAL_API` now does not automatically default to
   :kconfig:option:`CONFIG_SHELL_BACKEND_SERIAL_API_ASYNC` when
   :kconfig:option:`CONFIG_UART_ASYNC_API` is enabled, :kconfig:option:`CONFIG_SHELL_ASYNC_API`
-  also has to be enabled in order to use the asynchronous serial shell (:github: `68475`).
+  also has to be enabled in order to use the asynchronous serial shell (:github:`68475`).
 
 ZBus
 ====

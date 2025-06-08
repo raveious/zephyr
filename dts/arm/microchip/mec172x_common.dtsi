@@ -290,6 +290,7 @@ rtimer: timer@40007400 {
 	compatible = "microchip,xec-rtos-timer";
 	reg = <0x40007400 0x10>;
 	interrupts = <111 0>;
+	clock-frequency = <32768>;
 	girqs = <23 10>;
 };
 timer0: timer@40000c00 {
@@ -650,9 +651,10 @@ adc0: adc@40007c00 {
 	status = "disabled";
 	#io-channel-cells = <1>;
 	clktime = <32>;
+	channels = <16>;
 };
-kscan0: kscan@40009c00 {
-	compatible = "microchip,xec-kscan";
+kbd0: kbd@40009c00 {
+	compatible = "microchip,xec-kbd";
 	reg = <0x40009c00 0x18>;
 	interrupts = <135 0>;
 	girqs = <21 25>;
