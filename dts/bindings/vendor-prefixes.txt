@@ -305,6 +305,7 @@ hwacom	HwaCom Systems Inc.
 hycon	Hycon Technology Corp.
 hydis	Hydis Technologies
 hynitron	Hynitron
+hynetek	Hynetek Semiconductor Co., Ltd.
 hyundai	Hyundai Technology
 hzgrow	Hangzhou Grow Technology Co., Ltd.
 i2se	I2SE GmbH

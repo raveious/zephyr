@@ -1,0 +1,12 @@
+# Copyright (c) 2025
+# SPDX-License-Identifier: Apache-2.0
+
+description: Hynetek USB Type-C Power Delivery Sink Controller
+
+compatible: "hynetek,husb238-tcpc"
+
+include: [base.yaml, pinctrl-device.yaml]
+
+properties:
+  reg:
+    required: true

@@ -1,0 +1,19 @@
+# Hynetek HUSB238 TCPC configuration options
+
+# Copyright (c) 2025 Ian Wakely
+# SPDX-License-Identifier: Apache-2.0
+
+config USBC_TCPC_HUSB238
+	bool "USB-C TCPC device controller driver"
+	default y
+	depends on DT_HAS_HYNETEK_HUSB238_TCPC_ENABLED
+	help
+	  Enable Type-C Port Controller driver for Hynetek HUSB238.
+
+if USBC_TCPC_HUSB238
+
+config USBC_TCPC_HUSB238_RESET_ON_INIT
+	bool "Issue reset command when initializing the device"
+	default False
+
+endif
