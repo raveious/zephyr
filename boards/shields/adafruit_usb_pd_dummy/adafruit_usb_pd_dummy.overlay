@@ -1,0 +1,42 @@
+/*
+ * Copyright (c) 2025 Ian Wakely
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#include <zephyr/dt-bindings/usb-c/pd.h>
+
+/{
+	aliases {
+		usbc-port0 = &port0;
+	};
+
+	ports {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		port0: usbc-port@0 {
+			compatible = "usb-c-connector";
+			reg = <0>;
+			tcpc = <&husb238_tcpc0>;
+			vbus = <&husb238_vbus0>;
+			power-role = "sink";
+			sink-pdos = <PDO_FIXED(5000, 100, 0)>;
+		};
+	};
+};
+
+&zephyr_i2c {
+	status = "okay";
+
+	husb238_tcpc0: husb238_tcpc0@8 {
+		compatible = "hynetek,husb238-tcpc";
+		status = "okay";
+		reg = <0x08>;
+
+		husb238_vbus0: husb238_vbus0 {
+			compatible = "zephyr,usb-c-vbus-tcpci";
+			status = "okay";
+		};
+	};
+};

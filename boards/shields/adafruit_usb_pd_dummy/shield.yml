@@ -1,0 +1,6 @@
+shield:
+  name: adafruit_usb_pd_dummy
+  full_name: Adafruit USB PD Dummy
+  vendor: adafruit
+  supported_features:
+    - tcpc
